@@ -16,10 +16,15 @@ public enum EventSynth: Sendable {
         return event
     }
 
-    public static func pressKey(_ keycode: UInt16, sourceID: CGEventSourceStateID? = nil) {
+    /// keyDown постится с `flags` (для реплея буфера — сохранённые модификаторы,
+    /// иначе заглавные теряются), keyUp — всегда без флагов.
+    public static func pressKey(_ keycode: UInt16, flags: CGEventFlags = [],
+                                sourceID: CGEventSourceStateID? = nil) {
         let sid = sourceID ?? .combinedSessionState
-        makeEvent(keycode: keycode, keyDown: true, sourceID: sid)?.post(tap: .cghidEventTap)
-        makeEvent(keycode: keycode, keyDown: false, sourceID: sid)?.post(tap: .cghidEventTap)
+        makeEvent(keycode: keycode, keyDown: true, flags: flags, sourceID: sid)?
+            .post(tap: .cghidEventTap)
+        makeEvent(keycode: keycode, keyDown: false, sourceID: sid)?
+            .post(tap: .cghidEventTap)
     }
 
     public static func pressKeyCombination(_ modifiers: CGEventFlags, key: UInt16) {

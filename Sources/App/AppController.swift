@@ -86,7 +86,9 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
             case .deleteCharacters(let count):
                 for _ in 0..<count { EventSynth.pressKey(0x33) }
             case .replayBuffer(let strokes):
-                for s in strokes { EventSynth.pressKey(s.keycode) }
+                for s in strokes {
+                    EventSynth.pressKey(s.keycode, flags: CGEventFlags(rawValue: s.modifiers & 0x1F0000))
+                }
             case .resetBuffers: break
             case .toggleAutocorrection: break
             case .none: break
