@@ -12,12 +12,12 @@ Keyboard layout switching and automatic correction of words typed in a wrong lay
 ## Статус / Status
 
 ✅ **MVP-ядро работает — готово к ручной приёмке.** Ветка `feature/mvp-core`:
-27 юнит-тестов зелёные, release-сборка и упаковка в `.app` проходят.
+29 юнит-тестов зелёные, release-сборка и упаковка в `.app` проходят.
 
 Что уже есть / What works:
 
-- Перехват клавиатуры через `CGEventTap` и переключение раскладки по горячей
-  клавише **Cmd+\`** (другие раскладки перебираются циклически).
+- Перехват клавиатуры через `CGEventTap` и переключение между двумя
+  настроенными раскладками по горячей клавише **Cmd+\`**.
 - Автоконвертация слова, набранного в неверной раскладке, по триггер-словарю
   (seed-версия, 248 слов) с переключением раскладки и звуком.
 - Undo-конвертация по **Option+`** (откат последней автоконвертации).
@@ -63,18 +63,18 @@ CI + релизный workflow.
 
 ```sh
 swift build          # отладочная сборка
-swift test           # 27 тестов Engine (6 suites)
+swift test           # 29 тестов Engine (6 suites)
 swift build -c release
 ./Scripts/package-app.sh   # собирает build/FreentoSwitcher.app, ad-hoc подпись
 ```
 
-Требуется macOS 13+, Swift 6, Xcode Command Line Tools.
+Требуется macOS 14+, Swift 6, Xcode Command Line Tools.
 
 ## Установка / Installation
 
 ### Сборка из исходников / Build from source
 
-Требуется: macOS 13+, Xcode Command Line Tools (`xcode-select --install`).
+Требуется: macOS 14+, Xcode Command Line Tools (`xcode-select --install`).
 
 ```sh
 git clone https://github.com/Glukmann/FreentoSwitcher.git
