@@ -73,7 +73,12 @@ public final class InputSourceManager: @unchecked Sendable {
                                                 kbdType, 0, &deadKeyState,
                                                 chars.count, &length, &chars)
                     if status == noErr, length == 1, let scalar = Unicode.Scalar(chars[0]) {
-                        result[keycode] = Character(scalar)
+                        // Base wins: shift-символы асимметричны между раскладками
+                        // (EN shift+3 = "#", RU = "№"), а LayoutChecker всё равно
+                        // lowercases буквы при проверке слова.
+                        if result[keycode] == nil {
+                            result[keycode] = Character(scalar)
+                        }
                     }
                 }
             }
