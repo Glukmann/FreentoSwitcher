@@ -34,4 +34,8 @@ public struct KeyStrokeBuffer: Equatable, Sendable {
     public mutating func removeAll() {
         strokes.removeAll()
     }
+
+    public func stringValue(convertingWith engine: ConversionEngine) -> String {
+        engine.string(for: strokes, layoutID: layoutID)
+    }
 }
