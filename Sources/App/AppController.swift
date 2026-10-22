@@ -40,7 +40,7 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
             guard let self else { return }
             _ = self.stateMachine.toggleAutocorrection()
             self.settings.isAutocorrectionActive = self.stateMachine.autocorrectionIsActive
-            try? SettingsStore.save(self.settings)
+            SettingsStore.save(self.settings)
         }
         statusBar.onQuit = { NSApplication.shared.terminate(nil) }
     }
