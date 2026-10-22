@@ -4,13 +4,18 @@ import Platform
 
 @MainActor
 final class AppController: NSObject, @MainActor EventTapDelegate {
-    private let settings: AppSettings
+    private var settings: AppSettings
     private let inputSources = InputSourceManager.shared
     private let eventTap = EventTap()
     private let sounds: SoundPlayer
     private var stateMachine: TypingStateMachine
     private let boundaries: WordBoundaryDetector
     private let statusBar = StatusBarController()
+
+    /// Keycodes чистых модификаторов: Shift 0x38/0x3C, Caps 0x39, Cmd 0x37/0x36,
+    /// Option 0x3A/0x3D, Ctrl 0x3B/0x3E — их keyDown'ы в буфер не идут.
+    private static let pureModifierKeycodes: Set<UInt16> =
+        [0x38, 0x3C, 0x39, 0x37, 0x36, 0x3A, 0x3D, 0x3B, 0x3E]
 
     override init() {
         settings = SettingsStore.load()
@@ -32,7 +37,10 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
         eventTap.delegate = self
         statusBar.onSwitchLayout = { [weak self] in self?.manualSwitch() }
         statusBar.onToggleAutocorrection = { [weak self] in
-            _ = self?.stateMachine.toggleAutocorrection()
+            guard let self else { return }
+            _ = self.stateMachine.toggleAutocorrection()
+            self.settings.isAutocorrectionActive = self.stateMachine.autocorrectionIsActive
+            try? SettingsStore.save(self.settings)
         }
         statusBar.onQuit = { NSApplication.shared.terminate(nil) }
     }
@@ -50,19 +58,24 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
         // A15: исключённые приложения — сравнение bundleID фронт-процесса (MVP через NSWorkspace)
         let frontBundle = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
         if settings.excludedApps.contains(frontBundle) { return true }
-        // A2: хоткей ручного переключения
+        // A2: хоткей ручного переключения (I2: поглощаем, не отдаём системе)
         if key.keycode == settings.hotkeySwitchLayout.keycode,
            key.modifiers & 0x1C0000 == settings.hotkeySwitchLayout.modifiers & 0x1C0000 {
             apply(stateMachine.handleManualLayoutSwitch())
-            return true
+            return false
         }
         // A9: хоткей отмены конвертации
         if key.keycode == settings.hotkeyUndo.keycode,
            settings.hotkeyUndo.keycode != 0xFFFF,
            key.modifiers & 0x1C0000 == settings.hotkeyUndo.modifiers & 0x1C0000 {
             apply(stateMachine.handleUndoHotkey())
-            return true
+            return false
         }
+        // C2: чистые keyDown'ы модификаторов не буферизуем (иначе over-delete на 1)
+        if Self.pureModifierKeycodes.contains(key.keycode) { return true }
+        // C2: с зажатыми Cmd/Option/Ctrl не буферизуем (Cmd+C/V не портят буфер;
+        // Shift 0x20000 вне маски — заглавные буферизуются и реплеятся с флагами)
+        if (key.modifiers & 0x1C0000) != 0 { return true }
         let isSep = boundaries.isWordSeparator(key.keycode)
         apply(stateMachine.handleKeyDown(
             KeyStroke(keycode: key.keycode, modifiers: key.modifiers), isSeparator: isSep,
