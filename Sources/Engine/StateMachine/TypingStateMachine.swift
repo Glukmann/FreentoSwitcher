@@ -74,6 +74,7 @@ public struct TypingStateMachine: Sendable {
         guard rawBuffer.count > 0 else { return [.none] }
         if cancelNextWord {
             cancelNextWord = false
+            undoBuffer.removeAll()
             return [.resetBuffers]
         }
         // C1: русское слово в русской раскладке корректно — не конвертируем
@@ -92,9 +93,13 @@ public struct TypingStateMachine: Sendable {
         switch verdict {
         case .incorrectLayout:
             let strokes = rawBuffer.strokes
+            // I1: undo хранит только последнее сконвертированное слово
+            undoBuffer.removeAll()
+            for s in strokes { undoBuffer.append(s) }
             return [.switchLayout, .deleteCharacters(count: strokes.count),
                     .replayBuffer(strokes), .playSound(.autoConvert), .resetBuffers]
         case .unknown, .exception:
+            undoBuffer.removeAll()
             return [.resetBuffers]
         }
     }

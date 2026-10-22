@@ -101,4 +101,21 @@ struct TypingStateMachineTests {
         let undo = sm.handleUndoHotkey()
         #expect(undo == [.none])
     }
+
+    @Test func undoCoversOnlyLastConvertedWord() {
+        var sm = makeSM()
+        // слово1 "оо" — не триггер, undo после него пустой
+        _ = sm.handleKeyDown(KeyStroke(keycode: 0x2F, modifiers: 0), isSeparator: false, currentLayoutIsRussian: false)
+        _ = sm.handleKeyDown(KeyStroke(keycode: 0x2F, modifiers: 0), isSeparator: false, currentLayoutIsRussian: false)
+        _ = sm.handleKeyDown(KeyStroke(keycode: 0x31, modifiers: 0), isSeparator: true, currentLayoutIsRussian: false)
+        // слово2 "вборд" — конвертируется
+        for k: UInt16 in [0x0C, 0x2B, 0x2F, 0x1E, 0x27] {
+            _ = sm.handleKeyDown(KeyStroke(keycode: k, modifiers: 0), isSeparator: false, currentLayoutIsRussian: false)
+        }
+        _ = sm.handleKeyDown(KeyStroke(keycode: 0x31, modifiers: 0), isSeparator: true, currentLayoutIsRussian: false)
+        let e = sm.handleUndoHotkey()
+        // undo стирает и реплеит только последнее сконвертированное слово (5), не слово1+слово2 (7)
+        #expect(e.contains(.deleteCharacters(count: 5)))
+        #expect(e.contains { if case .replayBuffer(let s) = $0 { return s.count == 5 } else { return false } })
+    }
 }
