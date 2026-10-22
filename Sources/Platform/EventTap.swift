@@ -26,6 +26,10 @@ public final class EventTap: @unchecked Sendable {
 
     public init() {}
 
+    deinit {
+        stop()
+    }
+
     public func start() -> Bool {
         let callback: CGEventTapCallBack = { _, type, event, refcon in
             guard let refcon else { return Unmanaged.passRetained(event) }
