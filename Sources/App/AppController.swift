@@ -65,7 +65,8 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
         }
         let isSep = boundaries.isWordSeparator(key.keycode)
         apply(stateMachine.handleKeyDown(
-            KeyStroke(keycode: key.keycode, modifiers: key.modifiers), isSeparator: isSep))
+            KeyStroke(keycode: key.keycode, modifiers: key.modifiers), isSeparator: isSep,
+            currentLayoutIsRussian: inputSources.isCurrentRussian()))
         return true
     }
 

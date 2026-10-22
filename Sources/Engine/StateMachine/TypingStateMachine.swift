@@ -27,7 +27,8 @@ public struct TypingStateMachine: Sendable {
         self.autocorrectionIsActive = settings.isAutocorrectionActive
     }
 
-    public mutating func handleKeyDown(_ key: KeyStroke, isSeparator: Bool) -> [EngineEffect] {
+    public mutating func handleKeyDown(_ key: KeyStroke, isSeparator: Bool,
+                                       currentLayoutIsRussian: Bool) -> [EngineEffect] {
         if key.keycode == 0x35 { return reset() }                    // Escape
         if key.keycode == 0x33 {                                     // Backspace
             rawBuffer.removeLast()
@@ -36,7 +37,7 @@ public struct TypingStateMachine: Sendable {
         }
         guard autocorrectionIsActive else { return [.none] }
         if isSeparator {
-            return tryAutoconvert()
+            return tryAutoconvert(currentLayoutIsRussian: currentLayoutIsRussian)
         }
         rawBuffer.append(key)
         undoBuffer.append(key)
@@ -68,11 +69,17 @@ public struct TypingStateMachine: Sendable {
         return [.toggleAutocorrection]
     }
 
-    private mutating func tryAutoconvert() -> [EngineEffect] {
+    private mutating func tryAutoconvert(currentLayoutIsRussian: Bool) -> [EngineEffect] {
         defer { rawBuffer.removeAll() }
         guard rawBuffer.count > 0 else { return [.none] }
         if cancelNextWord {
             cancelNextWord = false
+            return [.resetBuffers]
+        }
+        // C1: русское слово в русской раскладке корректно — не конвертируем
+        // и не кладём в undoBuffer (откатывать нечего).
+        if currentLayoutIsRussian {
+            undoBuffer.removeAll()
             return [.resetBuffers]
         }
         // A3: буфер виртуально «переключается» в целевую раскладку перед проверкой.
