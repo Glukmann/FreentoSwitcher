@@ -1,0 +1,100 @@
+public enum EngineEffect: Equatable, Sendable {
+    case switchLayout                     // A2: сменить раскладку системно
+    case playSound(SoundMask)             // A13
+    case deleteCharacters(count: Int)     // стирание слова backspace'ами
+    case replayBuffer                     // заново постить нажатия из rawTextBuffer
+    case resetBuffers
+    case toggleAutocorrection             // по hotkeyToggleAutocorrection
+    case none
+}
+
+/// Чистый оркестратор автоконвертации: нажатия → буфер → вердикт LayoutChecker →
+/// эффекты, которые App исполняет (смена раскладки, backspace'ы, реплей, звук).
+/// Не знает про CGEvent/TIS — весь I/O на стороне App.
+public struct TypingStateMachine: Sendable {
+    public private(set) var rawBuffer = KeyStrokeBuffer()
+    private var undoBuffer = KeyStrokeBuffer()
+    private var settings: AppSettings
+    private let engine: ConversionEngine
+    private let checker: LayoutChecker
+    private var cancelNextWord = false
+    public private(set) var autocorrectionIsActive: Bool
+
+    public init(settings: AppSettings, engine: ConversionEngine, checker: LayoutChecker) {
+        self.settings = settings
+        self.engine = engine
+        self.checker = checker
+        self.autocorrectionIsActive = settings.isAutocorrectionActive
+    }
+
+    public mutating func handleKeyDown(_ key: KeyStroke, isSeparator: Bool) -> [EngineEffect] {
+        if key.keycode == 0x35 { return reset() }                    // Escape
+        if key.keycode == 0x33 {                                     // Backspace
+            rawBuffer.removeLast()
+            undoBuffer.removeLast()
+            return [.none]
+        }
+        guard autocorrectionIsActive else { return [.none] }
+        if isSeparator {
+            return tryAutoconvert()
+        }
+        rawBuffer.append(key)
+        undoBuffer.append(key)
+        return [.none]
+    }
+
+    public mutating func handleManualLayoutSwitch() -> [EngineEffect] {
+        if settings.cancelNextWordAfterManualSwitch { cancelNextWord = true }
+        return [.switchLayout, .playSound(.switchToEnglish)] // направление звука уточняет App
+    }
+
+    public mutating func handleEscape() -> [EngineEffect] { reset() }
+
+    public mutating func handleBackspace() -> [EngineEffect] {
+        rawBuffer.removeLast()
+        return [.none]
+    }
+
+    public mutating func handleUndoHotkey() -> [EngineEffect] {
+        guard undoBuffer.count > 0 else { return [.none] }
+        let effects: [EngineEffect] = [
+            .switchLayout, .deleteCharacters(count: undoBuffer.count),
+            .replayBuffer, .playSound(.undo)]
+        undoBuffer.removeAll()
+        return effects
+    }
+
+    public mutating func toggleAutocorrection() -> [EngineEffect] {
+        autocorrectionIsActive.toggle()
+        return [.toggleAutocorrection]
+    }
+
+    private mutating func tryAutoconvert() -> [EngineEffect] {
+        defer { rawBuffer.removeAll() }
+        guard rawBuffer.count > 0 else { return [.none] }
+        if cancelNextWord {
+            cancelNextWord = false
+            return [.resetBuffers]
+        }
+        // A3: буфер виртуально «переключается» в целевую раскладку перед проверкой.
+        // MVP проверяет только направление «набирали EN, имели в виду RU»
+        // (checker вызывается с isEnglishLayout: true), поэтому интерпретируем
+        // keycode'ы через русскую таблицу.
+        rawBuffer.layoutID = settings.russianLayoutID
+        let word = rawBuffer.stringValue(convertingWith: engine)
+        let verdict = checker.check(word, isEnglishLayout: true)
+        switch verdict {
+        case .incorrectLayout:
+            return [.switchLayout, .deleteCharacters(count: rawBuffer.count),
+                    .replayBuffer, .playSound(.autoConvert), .resetBuffers]
+        case .unknown, .exception:
+            return [.resetBuffers]
+        }
+    }
+
+    private mutating func reset() -> [EngineEffect] {
+        rawBuffer.removeAll()
+        undoBuffer.removeAll()
+        return [.resetBuffers]
+    }
+}
