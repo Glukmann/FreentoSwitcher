@@ -2,7 +2,7 @@ public enum EngineEffect: Equatable, Sendable {
     case switchLayout                     // A2: сменить раскладку системно
     case playSound(SoundMask)             // A13
     case deleteCharacters(count: Int)     // стирание слова backspace'ами
-    case replayBuffer                     // заново постить нажатия из rawTextBuffer
+    case replayBuffer([KeyStroke])        // заново постить ЭТИ нажатия (после смены раскладки)
     case resetBuffers
     case toggleAutocorrection             // по hotkeyToggleAutocorrection
     case none
@@ -57,11 +57,10 @@ public struct TypingStateMachine: Sendable {
 
     public mutating func handleUndoHotkey() -> [EngineEffect] {
         guard undoBuffer.count > 0 else { return [.none] }
-        let effects: [EngineEffect] = [
-            .switchLayout, .deleteCharacters(count: undoBuffer.count),
-            .replayBuffer, .playSound(.undo)]
+        let strokes = undoBuffer.strokes
         undoBuffer.removeAll()
-        return effects
+        return [.switchLayout, .deleteCharacters(count: strokes.count),
+                .replayBuffer(strokes), .playSound(.undo)]
     }
 
     public mutating func toggleAutocorrection() -> [EngineEffect] {
@@ -85,8 +84,9 @@ public struct TypingStateMachine: Sendable {
         let verdict = checker.check(word, isEnglishLayout: true)
         switch verdict {
         case .incorrectLayout:
-            return [.switchLayout, .deleteCharacters(count: rawBuffer.count),
-                    .replayBuffer, .playSound(.autoConvert), .resetBuffers]
+            let strokes = rawBuffer.strokes
+            return [.switchLayout, .deleteCharacters(count: strokes.count),
+                    .replayBuffer(strokes), .playSound(.autoConvert), .resetBuffers]
         case .unknown, .exception:
             return [.resetBuffers]
         }

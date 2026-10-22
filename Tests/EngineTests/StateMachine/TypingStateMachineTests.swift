@@ -32,7 +32,7 @@ struct TypingStateMachineTests {
         let effects = sm.handleKeyDown(KeyStroke(keycode: 0x31, modifiers: 0), isSeparator: true)
         #expect(effects.contains(.switchLayout))
         #expect(effects.contains(.deleteCharacters(count: 5)))
-        #expect(effects.contains(.replayBuffer))
+        #expect(effects.contains { if case .replayBuffer(let s) = $0 { return s.count == 5 } else { return false } })
         #expect(effects.contains(.playSound(.autoConvert)))
         #expect(sm.rawBuffer.count == 0)
     }
@@ -85,7 +85,7 @@ struct TypingStateMachineTests {
         _ = sm.handleKeyDown(KeyStroke(keycode: 0x31, modifiers: 0), isSeparator: true) // конвертация
         let e = sm.handleUndoHotkey()
         #expect(e.contains(.switchLayout))
-        #expect(e.contains(.replayBuffer))
+        #expect(e.contains { if case .replayBuffer(let s) = $0 { return s.count == 5 } else { return false } })
         #expect(e.contains(.playSound(.undo)))
     }
 }
