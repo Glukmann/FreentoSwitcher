@@ -48,8 +48,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public static let `default` = AppSettings(
         russianLayoutID: "com.apple.keylayout.Russian",
         englishLayoutID: "com.apple.keylayout.ABC",
-        hotkeySwitchLayout: Hotkey(keycode: 49, modifiers: 0x100000), // Cmd+`
-        hotkeyUndo: Hotkey(keycode: 49, modifiers: 0x80000),          // Option+`
+        hotkeySwitchLayout: Hotkey(keycode: 50, modifiers: 0x100000), // Cmd+`
+        hotkeyUndo: Hotkey(keycode: 50, modifiers: 0x80000),          // Option+`
         hotkeyToggleAutocorrection: Hotkey.none,
         sounds: [.switchToRussian, .switchToEnglish, .autoConvert, .undo],
         isSoundOn: true,

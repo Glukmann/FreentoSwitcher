@@ -13,7 +13,7 @@ struct AppSettingsTests {
         #expect(d.isAutocorrectionActive == true)
         #expect(d.isSoundOn == true)
         #expect(d.sounds.contains(.autoConvert))
-        #expect(d.hotkeySwitchLayout == Hotkey(keycode: 49, modifiers: 0x100000)) // Cmd+`
+        #expect(d.hotkeySwitchLayout == Hotkey(keycode: 50, modifiers: 0x100000)) // Cmd+`
     }
 
     @Test func saveLoadRoundtrip() {
