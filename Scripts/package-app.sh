@@ -12,5 +12,12 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 echo "APPL????" > "$APP/Contents/PkgInfo"
 mkdir -p "$APP/Contents/Resources"
 cp Sources/Engine/Checking/seed-triggers.txt "$APP/Contents/Resources/"
-codesign --force --sign - "$APP"
+# Подпись: локальный сертификат FreentoSigner (стабильная личность — TCC-права
+# переживают пересборки). Если сертификат недоступен (другая машина, CI) —
+# ad-hoc как раньше.
+if security find-identity -p codesigning 2>/dev/null | grep -q "FreentoSigner"; then
+  codesign --force --sign "FreentoSigner" "$APP"
+else
+  codesign --force --sign - "$APP"
+fi
 echo "Built $APP"
