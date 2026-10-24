@@ -14,7 +14,16 @@ public struct WordBoundaryDetector: Sendable {
         self.noAutoconvertAfterTabOrEnter = noAutoconvertAfterTabOrEnter
     }
 
-    public func isWordSeparator(_ keycode: UInt16) -> Bool {
+    /// Keycodes that finish a word and trigger the autocorrection check
+    /// regardless of layout: 0x31 space, 0x24 enter, 0x30 tab.
+    private static let universalSeparatorKeycodes: Set<UInt16> = [0x31, 0x24, 0x30]
+
+    public func isWordSeparator(_ keycode: UInt16, englishLayout: Bool) -> Bool {
+        if !englishLayout {
+            // В русской раскладке клавиши пунктуации печатают буквы (э, б, ю, ж, ё-ряд)
+            // и не должны разрывать слово.
+            return Self.universalSeparatorKeycodes.contains(keycode)
+        }
         if noAutoconvertAfterTabOrEnter && (keycode == 0x30 || keycode == 0x24) {
             return false
         }

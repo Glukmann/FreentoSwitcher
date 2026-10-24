@@ -107,7 +107,8 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
         // C2: с зажатыми Cmd/Option/Ctrl не буферизуем (Cmd+C/V не портят буфер;
         // Shift 0x20000 вне маски — заглавные буферизуются и реплеятся с флагами)
         if (key.modifiers & 0x1C0000) != 0 { return true }
-        let isSep = boundaries.isWordSeparator(key.keycode)
+        let isSep = boundaries.isWordSeparator(
+            key.keycode, englishLayout: !inputSources.isCurrentRussian())
         if isSep {
             DebugLogger.log(
                 "sep: layout=\(inputSources.currentLayoutID())"
