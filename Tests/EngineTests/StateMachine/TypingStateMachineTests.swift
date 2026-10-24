@@ -86,9 +86,9 @@ struct TypingStateMachineTests {
         _ = sm.handleKeyDown(KeyStroke(keycode: 0x31, modifiers: 0), isSeparator: true, currentLayoutIsRussian: false) // конвертация
         let e = sm.handleUndoHotkey()
         #expect(e.contains(.switchLayout))
-        // word = исходное слово, интерпретированное тем же способом, что и при конвертации
+        // word = исходный набранный текст: strokes интерпретируются через EN-таблицу
         #expect(e.contains { if case .replayBuffer(let s, let word) = $0 {
-            return s.count == 5 && word == "вборд" } else { return false } })
+            return s.count == 5 && word == "dbogl" } else { return false } })
         #expect(e.contains(.playSound(.undo)))
     }
 
@@ -140,6 +140,6 @@ struct TypingStateMachineTests {
         // undo стирает и реплеит только последнее сконвертированное слово (5), не слово1+слово2 (7)
         #expect(e.contains(.deleteCharacters(count: 5)))
         #expect(e.contains { if case .replayBuffer(let s, let word) = $0 {
-            return s.count == 5 && word == "вборд" } else { return false } })
+            return s.count == 5 && word == "dbogl" } else { return false } })
     }
 }
