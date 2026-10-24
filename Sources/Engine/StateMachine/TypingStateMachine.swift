@@ -39,6 +39,9 @@ public struct TypingStateMachine: Sendable {
         if isSeparator {
             return tryAutoconvert(currentLayoutIsRussian: currentLayoutIsRussian)
         }
+        // фантомные/сервисные keycode'ы (AltGr и пр.) не печатают символов —
+        // в буфер не попадают, иначе съедут deleteCharacters/replayBuffer.
+        guard engine.isCharacterKey(key.keycode) else { return [.none] }
         rawBuffer.append(key)
         undoBuffer.append(key)
         return [.none]

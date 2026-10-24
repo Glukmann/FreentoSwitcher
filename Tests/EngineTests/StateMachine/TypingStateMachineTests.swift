@@ -102,6 +102,25 @@ struct TypingStateMachineTests {
         #expect(undo == [.none])
     }
 
+    @Test func phantomUnmappedKeycodeIsIgnored() {
+        var sm = makeSM()
+        let e = sm.handleKeyDown(KeyStroke(keycode: 179, modifiers: 0), isSeparator: false, currentLayoutIsRussian: false)
+        #expect(e == [.none])
+        #expect(sm.rawBuffer.count == 0)
+    }
+
+    @Test func phantomKeycodeDoesNotShiftConversion() {
+        var sm = makeSM()
+        // "вборд" + фантомный keycode 179 посередине: конвертация стирает/реплеит 5 нажатий
+        for k: UInt16 in [0x0C, 179, 0x2B, 0x2F, 0x1E, 0x27] {
+            _ = sm.handleKeyDown(KeyStroke(keycode: k, modifiers: 0), isSeparator: false, currentLayoutIsRussian: false)
+        }
+        let effects = sm.handleKeyDown(KeyStroke(keycode: 0x31, modifiers: 0), isSeparator: true, currentLayoutIsRussian: false)
+        #expect(effects.contains(.switchLayout))
+        #expect(effects.contains(.deleteCharacters(count: 5)))
+        #expect(effects.contains { if case .replayBuffer(let s) = $0 { return s.count == 5 } else { return false } })
+    }
+
     @Test func undoCoversOnlyLastConvertedWord() {
         var sm = makeSM()
         // слово1 "оо" — не триггер, undo после него пустой

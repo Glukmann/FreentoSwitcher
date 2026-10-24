@@ -36,6 +36,10 @@ public struct ConversionEngine: Sendable {
         return String(string.map { map.convert($0) })
     }
 
+    public func isCharacterKey(_ keycode: UInt16) -> Bool {
+        keycodeToCharRU[keycode] != nil || keycodeToCharEN[keycode] != nil
+    }
+
     public func string(for strokes: [KeyStroke], layoutID: String) -> String {
         let table = isRussianLayoutID(layoutID) ? keycodeToCharRU : keycodeToCharEN
         return String(strokes.compactMap { table[$0.keycode] })
