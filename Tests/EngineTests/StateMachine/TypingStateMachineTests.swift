@@ -32,7 +32,8 @@ struct TypingStateMachineTests {
         let effects = sm.handleKeyDown(KeyStroke(keycode: 0x31, modifiers: 0), isSeparator: true, currentLayoutIsRussian: false)
         #expect(effects.contains(.switchLayout))
         #expect(effects.contains(.deleteCharacters(count: 5)))
-        #expect(effects.contains { if case .replayBuffer(let s) = $0 { return s.count == 5 } else { return false } })
+        #expect(effects.contains { if case .replayBuffer(let s, let word) = $0 {
+            return s.count == 5 && word == "вборд" } else { return false } })
         #expect(effects.contains(.playSound(.autoConvert)))
         #expect(sm.rawBuffer.count == 0)
     }
@@ -85,7 +86,9 @@ struct TypingStateMachineTests {
         _ = sm.handleKeyDown(KeyStroke(keycode: 0x31, modifiers: 0), isSeparator: true, currentLayoutIsRussian: false) // конвертация
         let e = sm.handleUndoHotkey()
         #expect(e.contains(.switchLayout))
-        #expect(e.contains { if case .replayBuffer(let s) = $0 { return s.count == 5 } else { return false } })
+        // word = исходное слово, интерпретированное тем же способом, что и при конвертации
+        #expect(e.contains { if case .replayBuffer(let s, let word) = $0 {
+            return s.count == 5 && word == "вборд" } else { return false } })
         #expect(e.contains(.playSound(.undo)))
     }
 
@@ -118,7 +121,8 @@ struct TypingStateMachineTests {
         let effects = sm.handleKeyDown(KeyStroke(keycode: 0x31, modifiers: 0), isSeparator: true, currentLayoutIsRussian: false)
         #expect(effects.contains(.switchLayout))
         #expect(effects.contains(.deleteCharacters(count: 5)))
-        #expect(effects.contains { if case .replayBuffer(let s) = $0 { return s.count == 5 } else { return false } })
+        #expect(effects.contains { if case .replayBuffer(let s, let word) = $0 {
+            return s.count == 5 && word == "вборд" } else { return false } })
     }
 
     @Test func undoCoversOnlyLastConvertedWord() {
@@ -135,6 +139,7 @@ struct TypingStateMachineTests {
         let e = sm.handleUndoHotkey()
         // undo стирает и реплеит только последнее сконвертированное слово (5), не слово1+слово2 (7)
         #expect(e.contains(.deleteCharacters(count: 5)))
-        #expect(e.contains { if case .replayBuffer(let s) = $0 { return s.count == 5 } else { return false } })
+        #expect(e.contains { if case .replayBuffer(let s, let word) = $0 {
+            return s.count == 5 && word == "вборд" } else { return false } })
     }
 }

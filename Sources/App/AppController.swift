@@ -135,10 +135,11 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
                 sounds.play(mask, switchingToRussian: inputSources.isCurrentRussian())
             case .deleteCharacters(let count):
                 for _ in 0..<count { EventSynth.pressKey(0x33) }
-            case .replayBuffer(let strokes):
-                for s in strokes {
-                    EventSynth.pressKey(s.keycode, flags: CGEventFlags(rawValue: s.modifiers & 0x1F0000))
-                }
+            case .replayBuffer(let strokes, let word):
+                // Реплей готовой строкой: keycode-реплей гонялся со сменой
+                // раскладки (первый символ вставал в старой). strokes сохранены
+                // в эффекте — запасной путь, если unicode-постинг даст сбои.
+                EventSynth.postText(word)
             case .resetBuffers: break
             case .toggleAutocorrection: break
             case .none: break

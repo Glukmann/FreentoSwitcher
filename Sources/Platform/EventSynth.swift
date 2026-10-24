@@ -33,4 +33,20 @@ public enum EventSynth: Sendable {
         makeEvent(keycode: key, keyDown: false, sourceID: .combinedSessionState)?
             .post(tap: .cghidEventTap)
     }
+
+    /// Постит готовую Unicode-строку одним keyDown/keyUp (keyboardSetUnicodeString).
+    /// Не зависит от текущей раскладки — лечит гонку «первый keycode в старой
+    /// раскладке» после TISSelectInputSource. Помечен eventSourceUserData,
+    /// как и pressKey.
+    public static func postText(_ text: String) {
+        let source = CGEventSource(stateID: .combinedSessionState)
+        guard let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true) else { return }
+        down.setIntegerValueField(.eventSourceUserData, value: EventTap.ownEventUserData)
+        var chars = Array(text.utf16)
+        down.keyboardSetUnicodeString(stringLength: chars.count, unicodeString: &chars)
+        down.post(tap: .cghidEventTap)
+        guard let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else { return }
+        up.setIntegerValueField(.eventSourceUserData, value: EventTap.ownEventUserData)
+        up.post(tap: .cghidEventTap)
+    }
 }

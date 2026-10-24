@@ -2,7 +2,7 @@ public enum EngineEffect: Equatable, Sendable {
     case switchLayout                     // A2: сменить раскладку системно
     case playSound(SoundMask)             // A13
     case deleteCharacters(count: Int)     // стирание слова backspace'ами
-    case replayBuffer([KeyStroke])        // заново постить ЭТИ нажатия (после смены раскладки)
+    case replayBuffer([KeyStroke], word: String) // word = готовая Unicode-строка: реплей текстом, не keycode'ами (иначе гонка со сменой раскладки)
     case resetBuffers
     case toggleAutocorrection             // по hotkeyToggleAutocorrection
     case none
@@ -62,9 +62,13 @@ public struct TypingStateMachine: Sendable {
     public mutating func handleUndoHotkey() -> [EngineEffect] {
         guard undoBuffer.count > 0 else { return [.none] }
         let strokes = undoBuffer.strokes
+        // word интерпретируем тем же способом, что и в tryAutoconvert:
+        // keycode'ы читаются через русскую таблицу (симметрично конвертации).
+        undoBuffer.layoutID = settings.russianLayoutID
+        let word = undoBuffer.stringValue(convertingWith: engine)
         undoBuffer.removeAll()
         return [.switchLayout, .deleteCharacters(count: strokes.count),
-                .replayBuffer(strokes), .playSound(.undo)]
+                .replayBuffer(strokes, word: word), .playSound(.undo)]
     }
 
     public mutating func toggleAutocorrection() -> [EngineEffect] {
@@ -100,7 +104,7 @@ public struct TypingStateMachine: Sendable {
             undoBuffer.removeAll()
             for s in strokes { undoBuffer.append(s) }
             return [.switchLayout, .deleteCharacters(count: strokes.count),
-                    .replayBuffer(strokes), .playSound(.autoConvert), .resetBuffers]
+                    .replayBuffer(strokes, word: word), .playSound(.autoConvert), .resetBuffers]
         case .unknown, .exception:
             undoBuffer.removeAll()
             return [.resetBuffers]
