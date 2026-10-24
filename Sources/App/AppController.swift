@@ -19,6 +19,23 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
 
     override init() {
         settings = SettingsStore.load()
+        // Раскладки по умолчанию (Russian/ABC) могут быть не включены у
+        // пользователя (например, вместо Russian — RussianWin). Заменяем
+        // сохранённые ID на реально включённые, если сохранённых нет в системе.
+        // Через InputSourceManager.shared, а не self.inputSources: чтение
+        // property до super.init() запрещено.
+        let detected = InputSourceManager.shared.detectLayoutIDs()
+        var resolvedRU = settings.russianLayoutID
+        var resolvedEN = settings.englishLayoutID
+        let enabled = InputSourceManager.shared.allLayoutIDs()
+        if !enabled.contains(resolvedRU), let ru = detected.russian { resolvedRU = ru }
+        if !enabled.contains(resolvedEN), let en = detected.english { resolvedEN = en }
+        if resolvedRU != settings.russianLayoutID || resolvedEN != settings.englishLayoutID {
+            settings.russianLayoutID = resolvedRU
+            settings.englishLayoutID = resolvedEN
+            SettingsStore.save(settings)
+            DebugLogger.log("layouts auto-detected: ru=\(resolvedRU) en=\(resolvedEN)")
+        }
         let maps = InputSourceManager.shared.makeKeycodeMaps(
             russianLayoutID: settings.russianLayoutID,
             englishLayoutID: settings.englishLayoutID)

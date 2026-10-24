@@ -48,6 +48,27 @@ public final class InputSourceManager: @unchecked Sendable {
         return list.compactMap { property($0, kTISPropertyInputSourceID) as? String }
     }
 
+    /// Определяет включённые русскую и английскую раскладки.
+    /// Возвращает nil для стороны, которую не удалось найти.
+    public func detectLayoutIDs() -> (russian: String?, english: String?) {
+        let ids = allLayoutIDs()
+        let russian = ids.first {
+            $0.range(of: "Russian", options: .caseInsensitive) != nil
+        }
+        // Порядок предпочтения: ABC → US → British/English.
+        // "US" матчим case-SENSITIVE: case-insensitive "us" матчится в
+        // "RUSsian"/"AUStrian" и английская сторона получила бы русскую раскладку.
+        let english = ids.first {
+            $0.range(of: "ABC", options: .caseInsensitive) != nil
+        } ?? ids.first {
+            $0.range(of: "US") != nil
+        } ?? ids.first {
+            $0.range(of: "British", options: .caseInsensitive) != nil
+                || $0.range(of: "English", options: .caseInsensitive) != nil
+        }
+        return (russian, english)
+    }
+
     private func property(_ source: TISInputSource, _ key: CFString) -> CFTypeRef? {
         guard let raw = TISGetInputSourceProperty(source, key) else { return nil }
         return Unmanaged<CFTypeRef>.fromOpaque(raw).takeUnretainedValue()
