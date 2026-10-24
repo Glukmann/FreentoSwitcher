@@ -91,6 +91,11 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
         // Shift 0x20000 вне маски — заглавные буферизуются и реплеятся с флагами)
         if (key.modifiers & 0x1C0000) != 0 { return true }
         let isSep = boundaries.isWordSeparator(key.keycode)
+        if isSep {
+            DebugLogger.log(
+                "sep: layout=\(inputSources.currentLayoutID())"
+                    + " isRussian=\(inputSources.isCurrentRussian())")
+        }
         apply(stateMachine.handleKeyDown(
             KeyStroke(keycode: key.keycode, modifiers: key.modifiers), isSeparator: isSep,
             currentLayoutIsRussian: inputSources.isCurrentRussian()))

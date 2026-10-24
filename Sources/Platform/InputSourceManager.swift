@@ -14,13 +14,24 @@ public final class InputSourceManager: @unchecked Sendable {
         return property(source, kTISPropertyInputSourceID) as? String ?? ""
     }
 
+    /// Русской считаем любую раскладку, чей ID содержит "Russian"
+    /// (Russian, RussianWin, ...), либо краткий ID "ru".
     public func isCurrentRussian() -> Bool {
-        isRussianLayoutID(currentLayoutID())
+        let id = currentLayoutID()
+        return id.contains("Russian") || id == "ru"
     }
 
     public func switchLanguage(russianLayoutID: String, englishLayoutID: String) {
-        let targetID = isCurrentRussian() ? englishLayoutID : russianLayoutID
-        guard let source = source(forLayoutID: targetID) else { return }
+        let wantsRussian = !isCurrentRussian()
+        let targetID = wantsRussian ? russianLayoutID : englishLayoutID
+        // Fallback только для русской: если точный ID не найден — первый источник,
+        // содержащий "Russian". Для английской точечно: не найден — лог и стоп.
+        guard let source = source(forLayoutID: targetID)
+            ?? (wantsRussian ? firstSource(containing: "Russian") : nil)
+        else {
+            DebugLogger.log("switchLanguage: layout \(targetID) not found")
+            return
+        }
         TISSelectInputSource(source)
     }
 
@@ -37,13 +48,6 @@ public final class InputSourceManager: @unchecked Sendable {
         return list.compactMap { property($0, kTISPropertyInputSourceID) as? String }
     }
 
-    private func isRussianLayoutID(_ id: String) -> Bool {
-        let lower = id.lowercased()
-        return lower == "ru"
-            || lower.localizedCaseInsensitiveContains("russian")
-            || lower.localizedCaseInsensitiveContains("рус")
-    }
-
     private func property(_ source: TISInputSource, _ key: CFString) -> CFTypeRef? {
         guard let raw = TISGetInputSourceProperty(source, key) else { return nil }
         return Unmanaged<CFTypeRef>.fromOpaque(raw).takeUnretainedValue()
@@ -53,6 +57,15 @@ public final class InputSourceManager: @unchecked Sendable {
         let properties = [kTISPropertyInputSourceID: id] as CFDictionary
         let list = TISCreateInputSourceList(properties, false)?.takeRetainedValue() as? [TISInputSource]
         return list?.first
+    }
+
+    private func firstSource(containing substring: String) -> TISInputSource? {
+        let properties = [kTISPropertyInputSourceCategory: kTISCategoryKeyboardInputSource] as CFDictionary
+        guard let list = TISCreateInputSourceList(properties, false)?.takeRetainedValue() as? [TISInputSource]
+        else { return nil }
+        return list.first {
+            (property($0, kTISPropertyInputSourceID) as? String)?.contains(substring) == true
+        }
     }
 
     private func charsForLayout(_ layoutID: String) -> [UInt16: Character] {
