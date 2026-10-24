@@ -93,11 +93,17 @@ public struct AppSettings: Codable, Equatable, Sendable {
 }
 
 public enum SettingsStore {
-    public static let defaultsSuiteName = "com.freento.FreentoSwitcher"
     private static let key = "settings.v1"
 
+    /// Продакшен: стандартный домен приложения (= bundle ID).
+    /// suiteName НЕ использовать: для GUI-приложения без app-group
+    /// entitlement возвращает nil → краш в save() (2026-10-24).
+    /// В тестах подменяется на изолированный suite (suite .serialized,
+    /// поэтому nonisolated(unsafe) допустимо).
+    public nonisolated(unsafe) static var defaults: UserDefaults = .standard
+
     public static func load() -> AppSettings {
-        guard let data = UserDefaults(suiteName: defaultsSuiteName)?.data(forKey: key),
+        guard let data = defaults.data(forKey: key),
               let s = try? JSONDecoder().decode(AppSettings.self, from: data) else {
             return .default
         }
@@ -106,7 +112,6 @@ public enum SettingsStore {
 
     public static func save(_ settings: AppSettings) {
         guard let data = try? JSONEncoder().encode(settings) else { return }
-        let d = UserDefaults(suiteName: defaultsSuiteName)!
-        d.set(data, forKey: key)
+        defaults.set(data, forKey: key)
     }
 }

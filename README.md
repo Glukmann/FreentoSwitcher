@@ -36,8 +36,8 @@ Keyboard layout switching and automatic correction of words typed in a wrong lay
 - LaunchAtLogin пока не подключён (код есть, wiring отложен).
 - Триггер-словарь — seed-версия на 248 слов (полный генератор из открытых
   корпусов — в плане).
-- UI настроек нет: параметры можно изменить через `defaults` в группе
-  `com.freento.FreentoSwitcher` (см. `Sources/Engine/Settings/AppSettings.swift`).
+- UI настроек нет: параметры можно изменить через `defaults` в домене
+  приложения `com.freento.FreentoSwitcher` (см. `Sources/Engine/Settings/AppSettings.swift`).
 - Accessibility-слой оригинала (per-app исключения, особые правила для
   браузеров) не реализован — в плане.
 

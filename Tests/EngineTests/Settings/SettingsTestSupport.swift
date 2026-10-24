@@ -5,9 +5,27 @@ import Engine
 // system loses the TestingMacros plugin path when a file imports both
 // Testing and Foundation (cross-import overlay), so test suites annotated
 // with @Suite fail to compile there.
-func removePersistentSettingsDomain() {
-    UserDefaults(suiteName: SettingsStore.defaultsSuiteName)?
-        .removePersistentDomain(forName: SettingsStore.defaultsSuiteName)
+
+private let isolatedSuiteName = "com.freento.FreentoSwitcher.test"
+
+/// Suite тестов .serialized, поэтому nonisolated(unsafe) допустимо.
+nonisolated(unsafe) private(set) var isolatedSettingsSuite: UserDefaults?
+
+func useIsolatedSettingsSuite() {
+    let d = UserDefaults(suiteName: isolatedSuiteName) ?? .standard
+    d.removePersistentDomain(forName: isolatedSuiteName)
+    SettingsStore.defaults = d
+    isolatedSettingsSuite = d
+}
+
+func clearIsolatedSettingsSuite() {
+    isolatedSettingsSuite?.removePersistentDomain(forName: isolatedSuiteName)
+}
+
+func restoreStandardSettingsSuite() {
+    SettingsStore.defaults = .standard
+    UserDefaults(suiteName: isolatedSuiteName)?.removePersistentDomain(forName: isolatedSuiteName)
+    isolatedSettingsSuite = nil
 }
 
 // Декодирует JSON в формате, сохранённом до появления ключа debugLogging

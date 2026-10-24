@@ -1,11 +1,14 @@
 import Testing
 @testable import Engine
 
-// .serialized: the tests share the UserDefaults suite, so they must not run
-// concurrently. The runner on this toolchain ignores the test-level
-// .serialized trait, but honors it at suite level.
+// .serialized: the tests share and mutate the static SettingsStore.defaults,
+// so they must not run concurrently. The runner on this toolchain ignores
+// the test-level .serialized trait, but honors it at suite level.
 @Suite(.serialized)
-struct AppSettingsTests {
+final class AppSettingsTests {
+    init() { useIsolatedSettingsSuite() }
+    deinit { restoreStandardSettingsSuite() }
+
     @Test func defaultsMatchSpec() {
         let d = AppSettings.default
         #expect(d.russianLayoutID == "com.apple.keylayout.RussianWin" || !d.russianLayoutID.isEmpty)
@@ -32,7 +35,7 @@ struct AppSettingsTests {
     }
 
     @Test func loadReturnsDefaultsWhenNothingSaved() {
-        removePersistentSettingsDomain()
+        clearIsolatedSettingsSuite()
         #expect(SettingsStore.load() == .default)
     }
 }
