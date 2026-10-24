@@ -68,6 +68,7 @@ public final class EventTap: @unchecked Sendable {
 
     private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            DebugLogger.log("tap disabled type=\(type.rawValue), re-enabling")
             if let port = machPort { CGEvent.tapEnable(tap: port, enable: true) }
             return nil
         }

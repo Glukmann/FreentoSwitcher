@@ -42,25 +42,38 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
             self.settings.isAutocorrectionActive = self.stateMachine.autocorrectionIsActive
             SettingsStore.save(self.settings)
         }
+        statusBar.onToggleDebugLogging = { [weak self] in
+            guard let self else { return }
+            self.settings.debugLogging.toggle()
+            DebugLogger.isEnabled = self.settings.debugLogging
+            self.statusBar.setDebugLoggingOn(self.settings.debugLogging)
+            SettingsStore.save(self.settings)
+        }
         statusBar.onQuit = { NSApplication.shared.terminate(nil) }
+        DebugLogger.isEnabled = settings.debugLogging
+        statusBar.setDebugLoggingOn(settings.debugLogging)
     }
 
     func start() {
-        if !AXIsProcessTrusted() {
+        let trusted = AXIsProcessTrusted()
+        if !trusted {
             // Plan B: полноценный онбординг; MVP: предупреждение в лог
             NSLog("FreentoSwitcher: Accessibility permission not granted")
         }
-        _ = eventTap.start()
+        let ok = eventTap.start()
+        DebugLogger.log("tap started ok=\(ok) axTrusted=\(trusted)")
     }
 
     func eventTap(_ tap: EventTap, didReceiveKey key: KeyEvent) -> Bool {
         guard key.type == .keyDown else { return true }
         // A15: исключённые приложения — сравнение bundleID фронт-процесса (MVP через NSWorkspace)
         let frontBundle = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
+        DebugLogger.log("key=0x\(String(key.keycode, radix: 16)) mods=0x\(String(key.modifiers, radix: 16)) front=\(frontBundle)")
         if settings.excludedApps.contains(frontBundle) { return true }
         // A2: хоткей ручного переключения (I2: поглощаем, не отдаём системе)
         if key.keycode == settings.hotkeySwitchLayout.keycode,
            key.modifiers & 0x1C0000 == settings.hotkeySwitchLayout.modifiers & 0x1C0000 {
+            DebugLogger.log("hotkey switch layout hit")
             apply(stateMachine.handleManualLayoutSwitch())
             return false
         }
@@ -68,6 +81,7 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
         if key.keycode == settings.hotkeyUndo.keycode,
            settings.hotkeyUndo.keycode != 0xFFFF,
            key.modifiers & 0x1C0000 == settings.hotkeyUndo.modifiers & 0x1C0000 {
+            DebugLogger.log("hotkey undo hit")
             apply(stateMachine.handleUndoHotkey())
             return false
         }
@@ -88,6 +102,7 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
     }
 
     private func apply(_ effects: [EngineEffect]) {
+        DebugLogger.log("effects: \(effects.map { String(describing: $0) })")
         for e in effects {
             switch e {
             case .switchLayout:

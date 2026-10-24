@@ -28,8 +28,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var excludedApps: [String]
     public var userRules: [UserRule]
     public var launchesOnStartup: Bool
+    public var debugLogging: Bool
 
-    public init(russianLayoutID: String, englishLayoutID: String, hotkeySwitchLayout: Hotkey, hotkeyUndo: Hotkey, hotkeyToggleAutocorrection: Hotkey, sounds: SoundMask, isSoundOn: Bool, isAutocorrectionActive: Bool, cancelNextWordAfterManualSwitch: Bool, noAutoconvertAfterTabOrEnter: Bool, excludedApps: [String], userRules: [UserRule], launchesOnStartup: Bool) {
+    public init(russianLayoutID: String, englishLayoutID: String, hotkeySwitchLayout: Hotkey, hotkeyUndo: Hotkey, hotkeyToggleAutocorrection: Hotkey, sounds: SoundMask, isSoundOn: Bool, isAutocorrectionActive: Bool, cancelNextWordAfterManualSwitch: Bool, noAutoconvertAfterTabOrEnter: Bool, excludedApps: [String], userRules: [UserRule], launchesOnStartup: Bool, debugLogging: Bool = false) {
         self.russianLayoutID = russianLayoutID
         self.englishLayoutID = englishLayoutID
         self.hotkeySwitchLayout = hotkeySwitchLayout
@@ -43,6 +44,35 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.excludedApps = excludedApps
         self.userRules = userRules
         self.launchesOnStartup = launchesOnStartup
+        self.debugLogging = debugLogging
+    }
+
+    // Синтезированный decode ломался бы на JSON, сохранённом до появления
+    // debugLogging (keyNotFound → load() молча сбрасывал бы все настройки
+    // на .default), поэтому decode ручной: новый ключ читается с дефолтом.
+    private enum CodingKeys: String, CodingKey {
+        case russianLayoutID, englishLayoutID, hotkeySwitchLayout, hotkeyUndo
+        case hotkeyToggleAutocorrection, sounds, isSoundOn, isAutocorrectionActive
+        case cancelNextWordAfterManualSwitch, noAutoconvertAfterTabOrEnter
+        case excludedApps, userRules, launchesOnStartup, debugLogging
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        russianLayoutID = try c.decode(String.self, forKey: .russianLayoutID)
+        englishLayoutID = try c.decode(String.self, forKey: .englishLayoutID)
+        hotkeySwitchLayout = try c.decode(Hotkey.self, forKey: .hotkeySwitchLayout)
+        hotkeyUndo = try c.decode(Hotkey.self, forKey: .hotkeyUndo)
+        hotkeyToggleAutocorrection = try c.decode(Hotkey.self, forKey: .hotkeyToggleAutocorrection)
+        sounds = try c.decode(SoundMask.self, forKey: .sounds)
+        isSoundOn = try c.decode(Bool.self, forKey: .isSoundOn)
+        isAutocorrectionActive = try c.decode(Bool.self, forKey: .isAutocorrectionActive)
+        cancelNextWordAfterManualSwitch = try c.decode(Bool.self, forKey: .cancelNextWordAfterManualSwitch)
+        noAutoconvertAfterTabOrEnter = try c.decode(Bool.self, forKey: .noAutoconvertAfterTabOrEnter)
+        excludedApps = try c.decode([String].self, forKey: .excludedApps)
+        userRules = try c.decode([UserRule].self, forKey: .userRules)
+        launchesOnStartup = try c.decode(Bool.self, forKey: .launchesOnStartup)
+        debugLogging = try c.decodeIfPresent(Bool.self, forKey: .debugLogging) ?? false
     }
 
     public static let `default` = AppSettings(

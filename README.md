@@ -12,7 +12,7 @@ Keyboard layout switching and automatic correction of words typed in a wrong lay
 ## Статус / Status
 
 ✅ **MVP-ядро работает — готово к ручной приёмке.** Ветка `feature/mvp-core`:
-29 юнит-тестов зелёные, release-сборка и упаковка в `.app` проходят.
+33 юнит-теста зелёные, release-сборка и упаковка в `.app` проходят.
 
 Что уже есть / What works:
 
@@ -21,7 +21,11 @@ Keyboard layout switching and automatic correction of words typed in a wrong lay
 - Автоконвертация слова, набранного в неверной раскладке, по триггер-словарю
   (seed-версия, 248 слов) с переключением раскладки и звуком.
 - Undo-конвертация по **Option+`** (откат последней автоконвертации).
-- Иконка в статус-баре с меню: Switch Layout / Toggle Autocorrection / Quit.
+- Иконка в статус-баре с меню: Switch Layout / Toggle Autocorrection /
+  Debug Logging / Quit.
+- Детальный лог для диагностики: персистентный переключатель **Debug Logging**
+  в меню иконки пишет клавиши/хоткеи/эффекты в `$TMPDIR/freento-debug.log`
+  (ленивый, при выключенном состоянии накладных расходов нет).
 - Архитектура Engine (чистый Swift, без платформы) / Platform (CGEventTap,
   TIS, синтез клавиш) / App (NSStatusItem): `Sources/Engine`, `Sources/Platform`,
   `Sources/App`.
@@ -63,7 +67,7 @@ CI + релизный workflow.
 
 ```sh
 swift build          # отладочная сборка
-swift test           # 29 тестов Engine (6 suites)
+swift test           # 33 теста Engine + Platform (7 suites)
 swift build -c release
 ./Scripts/package-app.sh   # собирает build/FreentoSwitcher.app, ad-hoc подпись
 ```

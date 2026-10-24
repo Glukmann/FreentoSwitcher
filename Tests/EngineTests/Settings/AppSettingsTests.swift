@@ -14,6 +14,11 @@ struct AppSettingsTests {
         #expect(d.isSoundOn == true)
         #expect(d.sounds.contains(.autoConvert))
         #expect(d.hotkeySwitchLayout == Hotkey(keycode: 50, modifiers: 0x100000)) // Cmd+`
+        #expect(d.debugLogging == false)
+    }
+
+    @Test func legacyJSONWithoutDebugLoggingDecodesWithDefaultOff() {
+        #expect(debugLoggingDecodedFromLegacyJSON() == false)
     }
 
     @Test func saveLoadRoundtrip() {

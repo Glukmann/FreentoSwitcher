@@ -29,5 +29,16 @@ let package = Package(
                 ]),
             ]
         ),
+        .testTarget(
+            name: "PlatformTests",
+            dependencies: ["Platform"],
+            swiftSettings: [
+                // Тот же TestingMacros workaround, что и у EngineTests выше.
+                .unsafeFlags([
+                    "-plugin-path",
+                    "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing",
+                ]),
+            ]
+        ),
     ]
 )
