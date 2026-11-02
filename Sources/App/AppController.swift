@@ -102,6 +102,12 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
     }
 
     func eventTap(_ tap: EventTap, didReceiveKey key: KeyEvent) -> Bool {
+        // A15: исключённые приложения — bundleID фронт-процесса (MVP через NSWorkspace).
+        // Проверка ДО alone-блока: иначе Option-alone в исключённом приложении
+        // дойдёт до convertSelection и синтезирует туда Cmd+C/Cmd+V. Alone-трекер
+        // в исключённом приложении состояние не копит значимо — просто пропускаем.
+        let frontBundle = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
+        if settings.excludedApps.contains(frontBundle) { return true }
         // Modifier-alone: Option как quick-switch (срабатывает по отпусканию,
         // без поглощения). Нужны и keyDown, и keyUp — поэтому блок ДО guard'а
         // на keyDown. Возвращаем true только на событиях самого Option: они
@@ -120,10 +126,7 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
             if key.keycode == 0x3A || key.keycode == 0x3D { return true }
         }
         guard key.type == .keyDown else { return true }
-        // A15: исключённые приложения — сравнение bundleID фронт-процесса (MVP через NSWorkspace)
-        let frontBundle = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
         DebugLogger.log("key=0x\(String(key.keycode, radix: 16)) mods=0x\(String(key.modifiers, radix: 16)) front=\(frontBundle)")
-        if settings.excludedApps.contains(frontBundle) { return true }
         // A2: хоткей ручного переключения (I2: поглощаем, не отдаём системе)
         if key.keycode == settings.hotkeySwitchLayout.keycode,
            key.modifiers & 0x1C0000 == settings.hotkeySwitchLayout.modifiers & 0x1C0000 {
@@ -190,8 +193,8 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
         // Откат: выделение — это ровно то, что мы сконвертировали в прошлый раз.
         if let pair = lastSelection, sel.copied == pair.converted {
             Clipboard.paste(pair.original)
-            usleep(80_000)
-            if let prev = sel.previous { Clipboard.restore(prev) }
+            usleep(300_000) // вставка успела прочитать буфер — вернём пользователю снапшот
+            Clipboard.restore(sel.snapshot)
             reselect(count: pair.original.count)
             lastSelection = (original: pair.converted, converted: pair.original)
             sounds.play(.selectionConvert, switchingToRussian: true) // направление не критично
@@ -201,8 +204,8 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
         let converted = engine.convert(sel.copied, mode: mode)
         guard converted != sel.copied else { return } // нечего менять
         Clipboard.paste(converted)
-        usleep(80_000)
-        if let prev = sel.previous { Clipboard.restore(prev) }
+        usleep(300_000) // вставка успела прочитать буфер — вернём пользователю снапшот
+        Clipboard.restore(sel.snapshot)
         reselect(count: converted.count)
         lastSelection = (original: sel.copied, converted: converted)
         sounds.play(.selectionConvert, switchingToRussian: mode == .toRussian)
