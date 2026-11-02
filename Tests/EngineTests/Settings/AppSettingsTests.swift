@@ -27,7 +27,7 @@ final class AppSettingsTests {
     @Test func defaultsIncludeAutoConvertEnabledAndConvertHotkey() {
         let d = AppSettings.default
         #expect(d.autoConvertEnabled == true)
-        #expect(d.hotkeyConvertLastWord == Hotkey(keycode: 35, modifiers: 0x180000)) // ⌥⌘P
+        #expect(d.hotkeyConvertLastWord == .aloneOption) // одиночный Option (quick-switch)
     }
 
     @Test func legacyJSONWithoutNewFieldsDecodesWithDefaults() {

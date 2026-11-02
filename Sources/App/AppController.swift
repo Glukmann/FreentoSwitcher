@@ -11,6 +11,8 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
     private var stateMachine: TypingStateMachine
     private let boundaries: WordBoundaryDetector
     private let statusBar = StatusBarController()
+    /// Трекер «одиночного Option» (quick-switch): срабатывание по отпусканию.
+    private var aloneTracker = ModifierAloneTracker()
     /// Флаг подтверждённой смены раскладки: ставится веткой .switchLayout
     /// (результат switchLanguageAndWait), сбрасывается после .replayBuffer.
     private var confirmedSwitch = false
@@ -97,6 +99,24 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
     }
 
     func eventTap(_ tap: EventTap, didReceiveKey key: KeyEvent) -> Bool {
+        // Modifier-alone: Option как quick-switch (срабатывает по отпусканию,
+        // без поглощения). Нужны и keyDown, и keyUp — поэтому блок ДО guard'а
+        // на keyDown. Возвращаем true только на событиях самого Option: они
+        // обязаны пройти в фокусное приложение, иначе модификатор «застрянет».
+        // Остальные клавиши идут в обычную обработку ниже — буфер набора
+        // (автоконвертация + ручная конвертация) от alone-режима не отключается.
+        if settings.hotkeyConvertLastWord == .aloneOption {
+            let fired = aloneTracker.handle(
+                keycode: key.keycode,
+                phase: key.type == .keyDown ? .down : .up,
+                isTrackedModifier: { $0 == 0x3A || $0 == 0x3D }) // Option: левый/правый
+            if fired {
+                DebugLogger.log("hotkey option-alone hit")
+                apply(stateMachine.handleManualConvert(
+                    currentLayoutIsRussian: inputSources.isCurrentRussian()))
+            }
+            if key.keycode == 0x3A || key.keycode == 0x3D { return true }
+        }
         guard key.type == .keyDown else { return true }
         // A15: исключённые приложения — сравнение bundleID фронт-процесса (MVP через NSWorkspace)
         let frontBundle = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""

@@ -32,7 +32,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var autoConvertEnabled: Bool
     public var hotkeyConvertLastWord: Hotkey
 
-    public init(russianLayoutID: String, englishLayoutID: String, hotkeySwitchLayout: Hotkey, hotkeyUndo: Hotkey, hotkeyToggleAutocorrection: Hotkey, sounds: SoundMask, isSoundOn: Bool, isAutocorrectionActive: Bool, cancelNextWordAfterManualSwitch: Bool, noAutoconvertAfterTabOrEnter: Bool, excludedApps: [String], userRules: [UserRule], launchesOnStartup: Bool, debugLogging: Bool = false, autoConvertEnabled: Bool = true, hotkeyConvertLastWord: Hotkey = Hotkey(keycode: 35, modifiers: 0x180000)) {
+    public init(russianLayoutID: String, englishLayoutID: String, hotkeySwitchLayout: Hotkey, hotkeyUndo: Hotkey, hotkeyToggleAutocorrection: Hotkey, sounds: SoundMask, isSoundOn: Bool, isAutocorrectionActive: Bool, cancelNextWordAfterManualSwitch: Bool, noAutoconvertAfterTabOrEnter: Bool, excludedApps: [String], userRules: [UserRule], launchesOnStartup: Bool, debugLogging: Bool = false, autoConvertEnabled: Bool = true, hotkeyConvertLastWord: Hotkey = .aloneOption) {
         self.russianLayoutID = russianLayoutID
         self.englishLayoutID = englishLayoutID
         self.hotkeySwitchLayout = hotkeySwitchLayout

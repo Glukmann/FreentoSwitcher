@@ -10,6 +10,11 @@ public struct Hotkey: Codable, Equatable, Sendable {
     }
 
     public static let none = Hotkey(keycode: 0xFFFF, modifiers: 0)
+
+    /// «Одиночный Option»: keycode 0xFFFE — сентинель (0xFFFF занят под .none),
+    /// реальных событий с таким keycode не бывает. Значение: Option нажат и
+    /// отпущен без других клавиш между нажатием и отпусканием.
+    public static let aloneOption = Hotkey(keycode: 0xFFFE, modifiers: 0x80000)
 }
 
 public struct SoundMask: OptionSet, Codable, Equatable, Sendable {

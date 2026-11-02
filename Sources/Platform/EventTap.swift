@@ -66,6 +66,39 @@ public final class EventTap: @unchecked Sendable {
         IsSecureEventInputEnabled()
     }
 
+    /// Модификаторы приходят не keyDown/keyUp, а flagsChanged — без перевода
+    /// переходов в KeyEvent делегат не видит «чистых» нажатий Option/Shift/...
+    /// (хоткей «одиночный Option» физически недостижим).
+    private var lastFlags: UInt64 = 0
+
+    private func modifierFlagBit(for keycode: UInt16) -> UInt64? {
+        switch keycode {
+        case 0x39: return 1 << 16                 // Caps Lock
+        case 0x38, 0x3C: return 1 << 17           // Shift
+        case 0x3B, 0x3E: return 1 << 18           // Control
+        case 0x3A, 0x3D: return 1 << 19           // Option
+        case 0x37, 0x36: return 1 << 20           // Command
+        case 0x3F: return 1 << 24                 // Fn
+        default: return nil
+        }
+    }
+
+    private func handleFlagsChanged(_ event: CGEvent) -> Unmanaged<CGEvent>? {
+        let flags = UInt64(event.flags.rawValue)
+        let keycode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+        defer { lastFlags = flags }
+        guard let bit = modifierFlagBit(for: keycode),
+              (flags & bit) != (lastFlags & bit) else {
+            return Unmanaged.passRetained(event)
+        }
+        let key = KeyEvent(
+            keycode: keycode,
+            modifiers: flags,
+            type: (flags & bit) != 0 ? .keyDown : .keyUp)
+        let passThrough = delegate?.eventTap(self, didReceiveKey: key) ?? true
+        return passThrough ? Unmanaged.passRetained(event) : nil
+    }
+
     private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             DebugLogger.log("tap disabled type=\(type.rawValue), re-enabling")
@@ -75,8 +108,11 @@ public final class EventTap: @unchecked Sendable {
         if event.getIntegerValueField(.eventSourceUserData) == Self.ownEventUserData {
             return Unmanaged.passRetained(event) // наши собственные события — не обрабатываем, но пропускаем
         }
-        guard type == .keyDown || type == .keyUp else {
+        guard type == .keyDown || type == .keyUp || type == .flagsChanged else {
             return Unmanaged.passRetained(event)
+        }
+        if type == .flagsChanged {
+            return handleFlagsChanged(event)
         }
         let key = KeyEvent(
             keycode: UInt16(event.getIntegerValueField(.keyboardEventKeycode)),
