@@ -236,4 +236,43 @@ struct TypingStateMachineTests {
             return s.count == 5 && word == "вборд" } else { return false } })
         #expect(undo.contains(.playSound(.undo)))
     }
+
+    @Test func undoAfterManualConvertDoesNotPoisonUndoBufferLayout() {
+        var sm = makeSM()
+        // RU→EN ручная конвертация: undoBuffer.layoutID = russian
+        for k: UInt16 in [0x0C, 0x2B, 0x2F, 0x1E, 0x27] {
+            _ = sm.handleKeyDown(KeyStroke(keycode: k, modifiers: 0), isSeparator: false, currentLayoutIsRussian: true)
+        }
+        _ = sm.handleManualConvert(currentLayoutIsRussian: true)
+        _ = sm.handleUndoHotkey() // undo очищает undoBuffer — layoutID не должен протухать
+        // печатаем новое слово в EN-раскладке и жмём undo вхолостую: штрихи должны
+        // читаться через legacy-дефолт EN, а не через протухший RU layoutID
+        for k: UInt16 in [0x0C, 0x2B, 0x2F] {
+            _ = sm.handleKeyDown(KeyStroke(keycode: k, modifiers: 0), isSeparator: false, currentLayoutIsRussian: false)
+        }
+        let undo = sm.handleUndoHotkey()
+        #expect(undo.contains { if case .replayBuffer(let s, let word) = $0 {
+            return s.count == 3 && word == "dbo" } else { return false } }) // не "вбо"
+        #expect(undo.contains(.playSound(.undo)))
+    }
+
+    @Test func manualSwitchCancelFlagDrainedWhileAutoConvertDisabled() {
+        var sm = makeSM(cancelAfterManualSwitch: true)
+        _ = sm.handleManualLayoutSwitch() // cancelNextWord = true
+        sm.setAutoConvertEnabled(false)
+        // слово, набранное пока авто-конвертация выключена
+        for k: UInt16 in [0x0C, 0x2B, 0x2F, 0x1E, 0x27] {
+            _ = sm.handleKeyDown(KeyStroke(keycode: k, modifiers: 0), isSeparator: false, currentLayoutIsRussian: false)
+        }
+        _ = sm.handleKeyDown(KeyStroke(keycode: 0x31, modifiers: 0), isSeparator: true, currentLayoutIsRussian: false)
+        sm.setAutoConvertEnabled(true)
+        // следующее слово конвертируется — флаг не должен пережить выключенный период
+        for k: UInt16 in [0x0C, 0x2B, 0x2F, 0x1E, 0x27] {
+            _ = sm.handleKeyDown(KeyStroke(keycode: k, modifiers: 0), isSeparator: false, currentLayoutIsRussian: false)
+        }
+        let effects = sm.handleKeyDown(KeyStroke(keycode: 0x31, modifiers: 0), isSeparator: true, currentLayoutIsRussian: false)
+        #expect(effects.contains(.switchLayout))
+        #expect(effects.contains(.deleteCharacters(count: 5)))
+        #expect(effects.contains(.playSound(.autoConvert)))
+    }
 }

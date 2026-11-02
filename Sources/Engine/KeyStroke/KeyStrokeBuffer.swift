@@ -33,6 +33,9 @@ public struct KeyStrokeBuffer: Equatable, Sendable {
 
     public mutating func removeAll() {
         strokes.removeAll()
+        // layoutID — свойство набора штрихов, а не буфера: после очистки
+        // протухший layoutID ломал бы undo (штрихи читались бы через старую таблицу).
+        layoutID = ""
     }
 
     public func stringValue(convertingWith engine: ConversionEngine) -> String {

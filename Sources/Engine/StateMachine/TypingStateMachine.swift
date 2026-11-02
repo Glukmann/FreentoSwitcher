@@ -109,12 +109,14 @@ public struct TypingStateMachine: Sendable {
     private mutating func tryAutoconvert(currentLayoutIsRussian: Bool) -> [EngineEffect] {
         defer { rawBuffer.removeAll() }
         guard rawBuffer.count > 0 else { return [.none] }
-        guard autoConvertEnabled else { undoBuffer.removeAll(); return [.resetBuffers] }
+        // Флаг отмены потребляем сепаратором в любом состоянии: если он переживёт
+        // период выключенной авто-конвертации, следующее слово молча не сконвертируется.
         if cancelNextWord {
             cancelNextWord = false
             undoBuffer.removeAll()
             return [.resetBuffers]
         }
+        guard autoConvertEnabled else { undoBuffer.removeAll(); return [.resetBuffers] }
         // C1: русское слово в русской раскладке корректно — не конвертируем
         // и не кладём в undoBuffer (откатывать нечего).
         if currentLayoutIsRussian {
