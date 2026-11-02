@@ -225,6 +225,34 @@ struct TypingStateMachineTests {
         #expect(toggleBack.contains(.playSound(.undo)))
     }
 
+    @Test func manualConvertWithSelectionSkipsUndo() {
+        // активное выделение имеет приоритет над откатом слова (backspace по
+        // выделению деструктивен) — engine возвращает [.none], App уйдёт
+        // в конвертацию выделения
+        var sm = makeSM(triggers: ["zzzzz"])
+        for k: UInt16 in [0x0C, 0x2B, 0x2F, 0x1E, 0x27] {
+            _ = sm.handleKeyDown(KeyStroke(keycode: k, modifiers: 0), isSeparator: false, currentLayoutIsRussian: false)
+        }
+        _ = sm.handleManualConvert(currentLayoutIsRussian: false) // "dbogl" → "вборд", undoBuffer непуст
+        let effects = sm.handleManualConvert(currentLayoutIsRussian: false, selectionExists: true)
+        #expect(effects == [.none])
+    }
+
+    @Test func manualConvertWithoutSelectionUndoWorks() {
+        // регрессия: без выделения повторный хоткей откатывает слово как раньше
+        var sm = makeSM(triggers: ["zzzzz"])
+        for k: UInt16 in [0x0C, 0x2B, 0x2F, 0x1E, 0x27] {
+            _ = sm.handleKeyDown(KeyStroke(keycode: k, modifiers: 0), isSeparator: false, currentLayoutIsRussian: false)
+        }
+        _ = sm.handleManualConvert(currentLayoutIsRussian: false) // "dbogl" → "вборд"
+        let toggleBack = sm.handleManualConvert(currentLayoutIsRussian: false, selectionExists: false)
+        #expect(toggleBack.contains(.switchLayout))
+        #expect(toggleBack.contains(.deleteCharacters(count: 5)))
+        #expect(toggleBack.contains { if case .replayBuffer(let s, let word) = $0 {
+            return s.count == 5 && word == "dbogl" } else { return false } })
+        #expect(toggleBack.contains(.playSound(.undo)))
+    }
+
     @Test func thirdManualConvertAfterToggleBackDoesNothing() {
         // регрессия: undoBuffer после отката пуст — «третье нажатие» вхолостую
         var sm = makeSM(triggers: ["zzzzz"])

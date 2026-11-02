@@ -173,23 +173,32 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
     }
 
     /// Общий обработчик хоткея конвертации: сначала буфер последнего слова,
-    /// и если он пуст ([.none]) — выделенный текст через буфер обмена.
+    /// при пустом буфере — выделение (если оно есть), иначе откат слова.
     private func convertOrToggle() {
-        let effects = stateMachine.handleManualConvert(
-            currentLayoutIsRussian: inputSources.isCurrentRussian())
-        if effects != [.none] {
-            apply(effects)
+        // Быстрый путь: в буфере есть набранное слово — конвертируем его,
+        // не трогаем буфер обмена (выделение после набора неактивно по построению).
+        if stateMachine.rawBuffer.count > 0 {
+            apply(stateMachine.handleManualConvert(
+                currentLayoutIsRussian: inputSources.isCurrentRussian()))
             return
         }
-        convertSelection()
+        // Буфер слова пуст: сначала проверяем выделение — если оно есть,
+        // конвертируем ЕГО, а не откатываем слово (откат с активным выделением
+        // деструктивен: backspace съедает выделение + текст перед ним).
+        if let sel = Clipboard.grabSelection() {
+            convertSelection(sel)
+            return
+        }
+        let effects = stateMachine.handleManualConvert(
+            currentLayoutIsRussian: inputSources.isCurrentRussian())
+        apply(effects) // undo-путь или [.none]
     }
 
     /// Последняя конвертация выделения: (оригинал, сконвертированное).
     /// Повторный хоткей при том же выделении откатывает обратно (Punto-style).
     private var lastSelection: (original: String, converted: String)?
 
-    private func convertSelection() {
-        guard let sel = Clipboard.grabSelection() else { return }
+    private func convertSelection(_ sel: (copied: String, snapshot: PasteboardSnapshot)) {
         // Откат: выделение — это ровно то, что мы сконвертировали в прошлый раз.
         if let pair = lastSelection, sel.copied == pair.converted {
             Clipboard.paste(pair.original)

@@ -93,8 +93,14 @@ public struct TypingStateMachine: Sendable {
     /// без словаря, всегда переводит, меняет раскладку и перепечатывает слово.
     /// Каноничное поведение Punto: повторное нажатие сразу после конвертации
     /// (rawBuffer уже пуст) откатывает её через undoBuffer.
-    public mutating func handleManualConvert(currentLayoutIsRussian: Bool) -> [EngineEffect] {
+    public mutating func handleManualConvert(currentLayoutIsRussian: Bool,
+                                             selectionExists: Bool = false) -> [EngineEffect] {
         if rawBuffer.count == 0 {
+            // Активное выделение имеет приоритет над откатом: deleteCharacters шлёт
+            // backspace'ы, а backspace с выделением съедает выделение целиком + текст
+            // перед ним — деструктивный откат. App с selectionExists: true уйдёт в
+            // конвертацию выделения и сюда больше не вернётся.
+            if selectionExists { return [.none] }  // App уйдёт в конвертацию выделения
             guard undoBuffer.count > 0 else { return [.none] }
             return handleUndoHotkey()
         }
