@@ -200,9 +200,17 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
             sounds.play(.selectionConvert, switchingToRussian: true) // направление не критично
             return
         }
-        guard let mode = engine.conversionMode(for: sel.copied) else { return }
+        // Выделение без букв — вставки ещё не было, буфер возвращаем сразу (sleep не нужен).
+        guard let mode = engine.conversionMode(for: sel.copied) else {
+            Clipboard.restore(sel.snapshot)
+            return
+        }
         let converted = engine.convert(sel.copied, mode: mode)
-        guard converted != sel.copied else { return } // нечего менять
+        // Буквы не маппятся RU↔EN — вставки ещё не было, буфер возвращаем сразу (sleep не нужен).
+        guard converted != sel.copied else {
+            Clipboard.restore(sel.snapshot)
+            return
+        }
         Clipboard.paste(converted)
         usleep(300_000) // вставка успела прочитать буфер — вернём пользователю снапшот
         Clipboard.restore(sel.snapshot)
