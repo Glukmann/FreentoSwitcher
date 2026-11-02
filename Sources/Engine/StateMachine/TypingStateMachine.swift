@@ -91,8 +91,13 @@ public struct TypingStateMachine: Sendable {
 
     /// A2-manual: принудительная конвертация последнего слова (ручная, как в Punto):
     /// без словаря, всегда переводит, меняет раскладку и перепечатывает слово.
+    /// Каноничное поведение Punto: повторное нажатие сразу после конвертации
+    /// (rawBuffer уже пуст) откатывает её через undoBuffer.
     public mutating func handleManualConvert(currentLayoutIsRussian: Bool) -> [EngineEffect] {
-        guard rawBuffer.count > 0 else { return [.none] }
+        if rawBuffer.count == 0 {
+            guard undoBuffer.count > 0 else { return [.none] }
+            return handleUndoHotkey()
+        }
         defer { rawBuffer.removeAll() }
         let strokes = rawBuffer.strokes
         // Исходный текст читался в ТЕКУЩЕЙ раскладке; целевое слово — интерпретация

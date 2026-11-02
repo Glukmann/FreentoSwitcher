@@ -203,8 +203,36 @@ struct TypingStateMachineTests {
         #expect(effects.contains(.playSound(.autoConvert)))
     }
 
-    @Test func manualConvertEmptyBufferDoesNothing() {
+    @Test func manualConvertEmptyRawAndUndoBuffersDoesNothing() {
         var sm = makeSM()
+        #expect(sm.handleManualConvert(currentLayoutIsRussian: false) == [.none])
+    }
+
+    @Test func repeatManualConvertAfterConvertTogglesBack() {
+        // каноничное поведение Punto: повторное ⌥⌘P сразу после конвертации
+        // откатывает её — реплеится исходное слово
+        var sm = makeSM(triggers: ["zzzzz"])
+        for k: UInt16 in [0x0C, 0x2B, 0x2F, 0x1E, 0x27] {
+            _ = sm.handleKeyDown(KeyStroke(keycode: k, modifiers: 0), isSeparator: false, currentLayoutIsRussian: false)
+        }
+        _ = sm.handleManualConvert(currentLayoutIsRussian: false) // "dbogl" → "вборд"
+        let toggleBack = sm.handleManualConvert(currentLayoutIsRussian: false)
+        #expect(toggleBack.contains(.switchLayout))
+        #expect(toggleBack.contains(.deleteCharacters(count: 5)))
+        // откат возвращает исходный набранный текст (латиница)
+        #expect(toggleBack.contains { if case .replayBuffer(let s, let word) = $0 {
+            return s.count == 5 && word == "dbogl" } else { return false } })
+        #expect(toggleBack.contains(.playSound(.undo)))
+    }
+
+    @Test func thirdManualConvertAfterToggleBackDoesNothing() {
+        // регрессия: undoBuffer после отката пуст — «третье нажатие» вхолостую
+        var sm = makeSM(triggers: ["zzzzz"])
+        for k: UInt16 in [0x0C, 0x2B, 0x2F, 0x1E, 0x27] {
+            _ = sm.handleKeyDown(KeyStroke(keycode: k, modifiers: 0), isSeparator: false, currentLayoutIsRussian: false)
+        }
+        _ = sm.handleManualConvert(currentLayoutIsRussian: false)
+        _ = sm.handleManualConvert(currentLayoutIsRussian: false) // откат
         #expect(sm.handleManualConvert(currentLayoutIsRussian: false) == [.none])
     }
 
