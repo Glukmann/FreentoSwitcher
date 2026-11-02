@@ -29,6 +29,9 @@ public struct KeyStrokeBuffer: Equatable, Sendable {
 
     public mutating func removeLast() {
         if !strokes.isEmpty { strokes.removeLast() }
+        // Опустошение стиранием — тот же сброс layoutID, что в removeAll():
+        // иначе протухший layoutID прошлого слова испортит undo нового набора.
+        if strokes.isEmpty { layoutID = "" }
     }
 
     public mutating func removeAll() {

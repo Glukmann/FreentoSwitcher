@@ -275,4 +275,27 @@ struct TypingStateMachineTests {
         #expect(effects.contains(.deleteCharacters(count: 5)))
         #expect(effects.contains(.playSound(.autoConvert)))
     }
+
+    @Test func backspaceEmptyingUndoBufferClearsStaleLayout() {
+        var sm = makeSM()
+        // RU→EN ручная конвертация: undoBuffer.layoutID = russian
+        for k: UInt16 in [0x0C, 0x2B, 0x2F, 0x1E, 0x27] {
+            _ = sm.handleKeyDown(KeyStroke(keycode: k, modifiers: 0), isSeparator: false, currentLayoutIsRussian: true)
+        }
+        _ = sm.handleManualConvert(currentLayoutIsRussian: true)
+        // пользователь стирает слово backspace'ами — undoBuffer опустошается,
+        // протухший RU layoutID не должен на нём остаться
+        for _ in 0..<5 {
+            _ = sm.handleKeyDown(KeyStroke(keycode: 0x33, modifiers: 0), isSeparator: false, currentLayoutIsRussian: false)
+        }
+        // набор нового слова в EN-раскладке и undo вхолостую: штрихи читаются
+        // через legacy-дефолт EN, а не через протухший RU layoutID
+        for k: UInt16 in [0x0C, 0x2B, 0x2F] {
+            _ = sm.handleKeyDown(KeyStroke(keycode: k, modifiers: 0), isSeparator: false, currentLayoutIsRussian: false)
+        }
+        let undo = sm.handleUndoHotkey()
+        #expect(undo.contains { if case .replayBuffer(let s, let word) = $0 {
+            return s.count == 3 && word == "dbo" } else { return false } }) // не "вбо"
+        #expect(undo.contains(.playSound(.undo)))
+    }
 }
