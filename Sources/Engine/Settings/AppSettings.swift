@@ -29,8 +29,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var userRules: [UserRule]
     public var launchesOnStartup: Bool
     public var debugLogging: Bool
+    public var autoConvertEnabled: Bool
+    public var hotkeyConvertLastWord: Hotkey
 
-    public init(russianLayoutID: String, englishLayoutID: String, hotkeySwitchLayout: Hotkey, hotkeyUndo: Hotkey, hotkeyToggleAutocorrection: Hotkey, sounds: SoundMask, isSoundOn: Bool, isAutocorrectionActive: Bool, cancelNextWordAfterManualSwitch: Bool, noAutoconvertAfterTabOrEnter: Bool, excludedApps: [String], userRules: [UserRule], launchesOnStartup: Bool, debugLogging: Bool = false) {
+    public init(russianLayoutID: String, englishLayoutID: String, hotkeySwitchLayout: Hotkey, hotkeyUndo: Hotkey, hotkeyToggleAutocorrection: Hotkey, sounds: SoundMask, isSoundOn: Bool, isAutocorrectionActive: Bool, cancelNextWordAfterManualSwitch: Bool, noAutoconvertAfterTabOrEnter: Bool, excludedApps: [String], userRules: [UserRule], launchesOnStartup: Bool, debugLogging: Bool = false, autoConvertEnabled: Bool = true, hotkeyConvertLastWord: Hotkey = Hotkey(keycode: 35, modifiers: 0x180000)) {
         self.russianLayoutID = russianLayoutID
         self.englishLayoutID = englishLayoutID
         self.hotkeySwitchLayout = hotkeySwitchLayout
@@ -45,6 +47,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.userRules = userRules
         self.launchesOnStartup = launchesOnStartup
         self.debugLogging = debugLogging
+        self.autoConvertEnabled = autoConvertEnabled
+        self.hotkeyConvertLastWord = hotkeyConvertLastWord
     }
 
     // Синтезированный decode ломался бы на JSON, сохранённом до появления
@@ -55,6 +59,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case hotkeyToggleAutocorrection, sounds, isSoundOn, isAutocorrectionActive
         case cancelNextWordAfterManualSwitch, noAutoconvertAfterTabOrEnter
         case excludedApps, userRules, launchesOnStartup, debugLogging
+        case autoConvertEnabled, hotkeyConvertLastWord
     }
 
     public init(from decoder: any Decoder) throws {
@@ -73,6 +78,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         userRules = try c.decode([UserRule].self, forKey: .userRules)
         launchesOnStartup = try c.decode(Bool.self, forKey: .launchesOnStartup)
         debugLogging = try c.decodeIfPresent(Bool.self, forKey: .debugLogging) ?? false
+        autoConvertEnabled = try c.decodeIfPresent(Bool.self, forKey: .autoConvertEnabled) ?? true
+        hotkeyConvertLastWord = try c.decodeIfPresent(Hotkey.self, forKey: .hotkeyConvertLastWord) ?? Hotkey(keycode: 35, modifiers: 0x180000)
     }
 
     public static let `default` = AppSettings(

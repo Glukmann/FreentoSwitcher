@@ -19,12 +19,17 @@ public struct TypingStateMachine: Sendable {
     private let checker: LayoutChecker
     private var cancelNextWord = false
     public private(set) var autocorrectionIsActive: Bool
+    /// A3-toggle: автоотключение автоконвертации по сепараторам.
+    /// Когда false, буфер последнего слова продолжает копиться — он нужен
+    /// для ручной конвертации (handleManualConvert).
+    public private(set) var autoConvertEnabled: Bool
 
     public init(settings: AppSettings, engine: ConversionEngine, checker: LayoutChecker) {
         self.settings = settings
         self.engine = engine
         self.checker = checker
         self.autocorrectionIsActive = settings.isAutocorrectionActive
+        self.autoConvertEnabled = settings.autoConvertEnabled
     }
 
     public mutating func handleKeyDown(_ key: KeyStroke, isSeparator: Bool,
@@ -62,9 +67,13 @@ public struct TypingStateMachine: Sendable {
     public mutating func handleUndoHotkey() -> [EngineEffect] {
         guard undoBuffer.count > 0 else { return [.none] }
         let strokes = undoBuffer.strokes
-        // word = исходный набранный текст: конвертация была EN→RU, значит
-        // strokes читаются через английскую таблицу (иначе undo — визуальный no-op).
-        undoBuffer.layoutID = settings.englishLayoutID
+        // word = исходный набранный текст: strokes читаются через таблицу раскладки,
+        // в которой слово было набрано (layoutID ставят заполнители буфера). Пустой
+        // layoutID — legacy-путь авто-конвертации: она всегда EN→RU, читаем через
+        // английскую таблицу (иначе undo — визуальный no-op).
+        if undoBuffer.layoutID.isEmpty {
+            undoBuffer.layoutID = settings.englishLayoutID
+        }
         let word = undoBuffer.stringValue(convertingWith: engine)
         undoBuffer.removeAll()
         return [.switchLayout, .deleteCharacters(count: strokes.count),
@@ -76,9 +85,31 @@ public struct TypingStateMachine: Sendable {
         return [.toggleAutocorrection]
     }
 
+    public mutating func setAutoConvertEnabled(_ on: Bool) {
+        autoConvertEnabled = on
+    }
+
+    /// A2-manual: принудительная конвертация последнего слова (ручная, как в Punto):
+    /// без словаря, всегда переводит, меняет раскладку и перепечатывает слово.
+    public mutating func handleManualConvert(currentLayoutIsRussian: Bool) -> [EngineEffect] {
+        guard rawBuffer.count > 0 else { return [.none] }
+        defer { rawBuffer.removeAll() }
+        let strokes = rawBuffer.strokes
+        // Исходный текст читался в ТЕКУЩЕЙ раскладке; целевое слово — интерпретация
+        // тех же keycode'ов через таблицу противоположной раскладки.
+        rawBuffer.layoutID = currentLayoutIsRussian ? settings.englishLayoutID : settings.russianLayoutID
+        let word = rawBuffer.stringValue(convertingWith: engine)
+        undoBuffer.removeAll()
+        for s in strokes { undoBuffer.append(s) }
+        undoBuffer.layoutID = currentLayoutIsRussian ? settings.russianLayoutID : settings.englishLayoutID
+        return [.switchLayout, .deleteCharacters(count: strokes.count),
+                .replayBuffer(strokes, word: word), .playSound(.autoConvert), .resetBuffers]
+    }
+
     private mutating func tryAutoconvert(currentLayoutIsRussian: Bool) -> [EngineEffect] {
         defer { rawBuffer.removeAll() }
         guard rawBuffer.count > 0 else { return [.none] }
+        guard autoConvertEnabled else { undoBuffer.removeAll(); return [.resetBuffers] }
         if cancelNextWord {
             cancelNextWord = false
             undoBuffer.removeAll()
@@ -103,6 +134,8 @@ public struct TypingStateMachine: Sendable {
             // I1: undo хранит только последнее сконвертированное слово
             undoBuffer.removeAll()
             for s in strokes { undoBuffer.append(s) }
+            // strokes набраны в EN-раскладке — undo читает их через английскую таблицу
+            undoBuffer.layoutID = settings.englishLayoutID
             return [.switchLayout, .deleteCharacters(count: strokes.count),
                     .replayBuffer(strokes, word: word), .playSound(.autoConvert), .resetBuffers]
         case .unknown, .exception:

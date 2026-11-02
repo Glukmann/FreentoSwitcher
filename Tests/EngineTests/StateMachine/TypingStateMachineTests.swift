@@ -142,4 +142,98 @@ struct TypingStateMachineTests {
         #expect(e.contains { if case .replayBuffer(let s, let word) = $0 {
             return s.count == 5 && word == "dbogl" } else { return false } })
     }
+
+    @Test func autoConvertDisabledSkipsConversionButKeepsBuffering() {
+        var sm = makeSM()
+        sm.setAutoConvertEnabled(false)
+        for k: UInt16 in [0x0C, 0x2B, 0x2F, 0x1E, 0x27] {
+            _ = sm.handleKeyDown(KeyStroke(keycode: k, modifiers: 0), isSeparator: false, currentLayoutIsRussian: false)
+        }
+        // буфер последнего слова копится — нужен для ручной конвертации
+        #expect(sm.rawBuffer.count == 5)
+        let effects = sm.handleKeyDown(KeyStroke(keycode: 0x31, modifiers: 0), isSeparator: true, currentLayoutIsRussian: false)
+        #expect(effects == [.resetBuffers])
+        #expect(!effects.contains(.switchLayout))
+        #expect(!effects.contains { if case .replayBuffer = $0 { return true } else { return false } })
+        #expect(sm.rawBuffer.count == 0)
+    }
+
+    @Test func autoConvertReenabledConvertsAgain() {
+        var sm = makeSM()
+        sm.setAutoConvertEnabled(false)
+        for k: UInt16 in [0x0C, 0x2B, 0x2F, 0x1E, 0x27] {
+            _ = sm.handleKeyDown(KeyStroke(keycode: k, modifiers: 0), isSeparator: false, currentLayoutIsRussian: false)
+        }
+        _ = sm.handleKeyDown(KeyStroke(keycode: 0x31, modifiers: 0), isSeparator: true, currentLayoutIsRussian: false)
+        sm.setAutoConvertEnabled(true)
+        for k: UInt16 in [0x0C, 0x2B, 0x2F, 0x1E, 0x27] {
+            _ = sm.handleKeyDown(KeyStroke(keycode: k, modifiers: 0), isSeparator: false, currentLayoutIsRussian: false)
+        }
+        let effects = sm.handleKeyDown(KeyStroke(keycode: 0x31, modifiers: 0), isSeparator: true, currentLayoutIsRussian: false)
+        #expect(effects.contains(.switchLayout))
+        #expect(effects.contains(.deleteCharacters(count: 5)))
+        #expect(effects.contains(.playSound(.autoConvert)))
+    }
+
+    @Test func manualConvertENtoRUForcesWithoutDictionary() {
+        // триггеры НЕ совпадают — ручная конвертация не смотрит словарь
+        var sm = makeSM(triggers: ["zzzzz"])
+        for k: UInt16 in [0x0C, 0x2B, 0x2F, 0x1E, 0x27] {
+            _ = sm.handleKeyDown(KeyStroke(keycode: k, modifiers: 0), isSeparator: false, currentLayoutIsRussian: false)
+        }
+        let effects = sm.handleManualConvert(currentLayoutIsRussian: false)
+        #expect(effects.contains(.switchLayout))
+        #expect(effects.contains(.deleteCharacters(count: 5)))
+        #expect(effects.contains { if case .replayBuffer(let s, let word) = $0 {
+            return s.count == 5 && word == "вборд" } else { return false } })
+        #expect(effects.contains(.playSound(.autoConvert)))
+        #expect(sm.rawBuffer.count == 0)
+    }
+
+    @Test func manualConvertRUtoEN() {
+        var sm = makeSM(triggers: ["zzzzz"])
+        for k: UInt16 in [0x0C, 0x2B, 0x2F, 0x1E, 0x27] {
+            _ = sm.handleKeyDown(KeyStroke(keycode: k, modifiers: 0), isSeparator: false, currentLayoutIsRussian: true)
+        }
+        let effects = sm.handleManualConvert(currentLayoutIsRussian: true)
+        #expect(effects.contains(.switchLayout))
+        #expect(effects.contains(.deleteCharacters(count: 5)))
+        #expect(effects.contains { if case .replayBuffer(let s, let word) = $0 {
+            return s.count == 5 && word == "dbogl" } else { return false } })
+        #expect(effects.contains(.playSound(.autoConvert)))
+    }
+
+    @Test func manualConvertEmptyBufferDoesNothing() {
+        var sm = makeSM()
+        #expect(sm.handleManualConvert(currentLayoutIsRussian: false) == [.none])
+    }
+
+    @Test func undoAfterManualConvertENtoRURestoresLatin() {
+        var sm = makeSM()
+        for k: UInt16 in [0x0C, 0x2B, 0x2F, 0x1E, 0x27] {
+            _ = sm.handleKeyDown(KeyStroke(keycode: k, modifiers: 0), isSeparator: false, currentLayoutIsRussian: false)
+        }
+        _ = sm.handleManualConvert(currentLayoutIsRussian: false) // "dbogl" → "вборд"
+        let undo = sm.handleUndoHotkey()
+        #expect(undo.contains(.switchLayout))
+        #expect(undo.contains(.deleteCharacters(count: 5)))
+        // undo восстанавливает исходный набранный текст (латиница)
+        #expect(undo.contains { if case .replayBuffer(let s, let word) = $0 {
+            return s.count == 5 && word == "dbogl" } else { return false } })
+        #expect(undo.contains(.playSound(.undo)))
+    }
+
+    @Test func undoAfterManualConvertRUtoENRestoresRussian() {
+        var sm = makeSM()
+        for k: UInt16 in [0x0C, 0x2B, 0x2F, 0x1E, 0x27] {
+            _ = sm.handleKeyDown(KeyStroke(keycode: k, modifiers: 0), isSeparator: false, currentLayoutIsRussian: true)
+        }
+        _ = sm.handleManualConvert(currentLayoutIsRussian: true) // "вборд" → "dbogl"
+        let undo = sm.handleUndoHotkey()
+        #expect(undo.contains(.switchLayout))
+        // undo восстанавливает исходный набранный текст (русское слово)
+        #expect(undo.contains { if case .replayBuffer(let s, let word) = $0 {
+            return s.count == 5 && word == "вборд" } else { return false } })
+        #expect(undo.contains(.playSound(.undo)))
+    }
 }

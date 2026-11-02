@@ -24,6 +24,18 @@ final class AppSettingsTests {
         #expect(debugLoggingDecodedFromLegacyJSON() == false)
     }
 
+    @Test func defaultsIncludeAutoConvertEnabledAndConvertHotkey() {
+        let d = AppSettings.default
+        #expect(d.autoConvertEnabled == true)
+        #expect(d.hotkeyConvertLastWord == Hotkey(keycode: 35, modifiers: 0x180000)) // ⌥⌘P
+    }
+
+    @Test func legacyJSONWithoutNewFieldsDecodesWithDefaults() {
+        let r = newFieldsDecodedFromLegacyJSON()
+        #expect(r.autoConvert == true)
+        #expect(r.hotkey == Hotkey(keycode: 35, modifiers: 0x180000))
+    }
+
     @Test func saveLoadRoundtrip() {
         var s = AppSettings.default
         s.excludedApps = ["com.apple.Safari"]

@@ -67,8 +67,20 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
             SettingsStore.save(self.settings)
         }
         statusBar.onQuit = { NSApplication.shared.terminate(nil) }
+        statusBar.onConvertLastWord = { [weak self] in
+            guard let self else { return }
+            apply(stateMachine.handleManualConvert(currentLayoutIsRussian: inputSources.isCurrentRussian()))
+        }
+        statusBar.onToggleAutoConversion = { [weak self] in
+            guard let self else { return }
+            settings.autoConvertEnabled.toggle()
+            stateMachine.setAutoConvertEnabled(settings.autoConvertEnabled)
+            statusBar.setAutoConversionOn(settings.autoConvertEnabled)
+            SettingsStore.save(settings)
+        }
         DebugLogger.isEnabled = settings.debugLogging
         statusBar.setDebugLoggingOn(settings.debugLogging)
+        statusBar.setAutoConversionOn(settings.autoConvertEnabled)
     }
 
     func start() {
@@ -100,6 +112,14 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
            key.modifiers & 0x1C0000 == settings.hotkeyUndo.modifiers & 0x1C0000 {
             DebugLogger.log("hotkey undo hit")
             apply(stateMachine.handleUndoHotkey())
+            return false
+        }
+        // A2-manual: хоткей принудительной конвертации последнего слова
+        if key.keycode == settings.hotkeyConvertLastWord.keycode,
+           settings.hotkeyConvertLastWord.keycode != 0xFFFF,
+           key.modifiers & 0x1C0000 == settings.hotkeyConvertLastWord.modifiers & 0x1C0000 {
+            DebugLogger.log("hotkey convert last word hit")
+            apply(stateMachine.handleManualConvert(currentLayoutIsRussian: inputSources.isCurrentRussian()))
             return false
         }
         // C2: чистые keyDown'ы модификаторов не буферизуем (иначе over-delete на 1)
