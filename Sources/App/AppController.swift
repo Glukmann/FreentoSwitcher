@@ -11,6 +11,9 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
     private var stateMachine: TypingStateMachine
     private let boundaries: WordBoundaryDetector
     private let statusBar = StatusBarController()
+    /// Флаг подтверждённой смены раскладки: ставится веткой .switchLayout
+    /// (результат switchLanguageAndWait), сбрасывается после .replayBuffer.
+    private var confirmedSwitch = false
 
     /// Keycodes чистых модификаторов: Shift 0x38/0x3C, Caps 0x39, Cmd 0x37/0x36,
     /// Option 0x3A/0x3D, Ctrl 0x3B/0x3E — их keyDown'ы в буфер не идут.
@@ -149,18 +152,27 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
         for e in effects {
             switch e {
             case .switchLayout:
-                inputSources.switchLanguage(
+                confirmedSwitch = inputSources.switchLanguageAndWait(
                     russianLayoutID: settings.russianLayoutID,
                     englishLayoutID: settings.englishLayoutID)
+                DebugLogger.log("switchLayout confirmed=\(confirmedSwitch)")
             case .playSound(let mask):
                 sounds.play(mask, switchingToRussian: inputSources.isCurrentRussian())
             case .deleteCharacters(let count):
                 for _ in 0..<count { EventSynth.pressKey(0x33) }
             case .replayBuffer(let strokes, let word):
-                // Реплей готовой строкой: keycode-реплей гонялся со сменой
-                // раскладки (первый символ вставал в старой). strokes сохранены
-                // в эффекте — запасной путь, если unicode-постинг даст сбои.
-                EventSynth.postText(word)
+                // Keycode-реплей после подтверждённой смены раскладки:
+                // unicode-постинг (postText) Заметки/Терминал игнорируют.
+                if confirmedSwitch {
+                    for s in strokes {
+                        EventSynth.pressKey(s.keycode, flags: CGEventFlags(rawValue: s.modifiers & 0x1C0000))
+                    }
+                } else {
+                    // Fallback: unicode-постинг (некоторые приложения его не принимают,
+                    // но лучше, чем ничего).
+                    EventSynth.postText(word)
+                }
+                confirmedSwitch = false
             case .resetBuffers: break
             case .toggleAutocorrection: break
             case .none: break

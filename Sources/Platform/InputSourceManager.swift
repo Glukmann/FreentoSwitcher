@@ -1,6 +1,7 @@
 import CoreServices
 import Carbon // LMGetKbdType
 import Engine
+import Foundation // usleep
 
 /// Читает и переключает системные раскладки клавиатуры через Text Input Sources.
 public final class InputSourceManager: @unchecked Sendable {
@@ -33,6 +34,22 @@ public final class InputSourceManager: @unchecked Sendable {
             return
         }
         TISSelectInputSource(source)
+    }
+
+    /// Переключает раскладку и ждёт, пока TIS не подтвердит смену.
+    /// Возвращает true, если раскладка подтверждена за timeout.
+    @discardableResult
+    public func switchLanguageAndWait(russianLayoutID: String, englishLayoutID: String,
+                                      timeout: Duration = .milliseconds(500)) -> Bool {
+        let before = currentLayoutID()
+        switchLanguage(russianLayoutID: russianLayoutID, englishLayoutID: englishLayoutID)
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            let now = currentLayoutID()
+            if now != before && !now.isEmpty { return true }
+            usleep(5_000) // 5 мс
+        }
+        return false
     }
 
     public func makeKeycodeMaps(russianLayoutID: String, englishLayoutID: String)

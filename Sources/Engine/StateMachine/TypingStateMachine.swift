@@ -2,7 +2,7 @@ public enum EngineEffect: Equatable, Sendable {
     case switchLayout                     // A2: сменить раскладку системно
     case playSound(SoundMask)             // A13
     case deleteCharacters(count: Int)     // стирание слова backspace'ами
-    case replayBuffer([KeyStroke], word: String) // word = готовая Unicode-строка: реплей текстом, не keycode'ами (иначе гонка со сменой раскладки)
+    case replayBuffer([KeyStroke], word: String) // strokes — keycode-реплей после подтверждённой смены раскладки; word — fallback для unicode-постинга
     case resetBuffers
     case toggleAutocorrection             // по hotkeyToggleAutocorrection
     case none
