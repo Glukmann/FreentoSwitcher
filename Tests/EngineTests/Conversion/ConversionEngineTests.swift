@@ -34,4 +34,31 @@ struct ConversionEngineTests {
         #expect(e.string(for: strokes, layoutID: "ru") == "фы")
         #expect(e.string(for: strokes, layoutID: "en") == "as")
     }
+
+    @Test func conversionModeRussianTextGoesToEnglish() {
+        let e = makeEngine()
+        #expect(e.conversionMode(for: "привет мир") == .toEnglish)
+    }
+
+    @Test func conversionModeEnglishTextGoesToRussian() {
+        let e = makeEngine()
+        #expect(e.conversionMode(for: "ghbdtn vbh") == .toRussian)
+    }
+
+    @Test func conversionModeNoLettersReturnsNil() {
+        let e = makeEngine()
+        #expect(e.conversionMode(for: "123 !!!") == nil)
+    }
+
+    @Test func conversionModeHalfHalfIsDeterministicToRussian() {
+        let e = makeEngine()
+        // Ровно 50/50 (2 кириллицы + 2 латиницы) → не «больше половины» → .toRussian
+        #expect(e.conversionMode(for: "абcd") == .toRussian)
+    }
+
+    @Test func conversionModeLatinMajorityWithYoGoesToRussian() {
+        let e = makeEngine()
+        // ё — кириллица, но латиницы больше → .toRussian
+        #expect(e.conversionMode(for: "ёghbdtn") == .toRussian)
+    }
 }

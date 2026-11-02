@@ -36,6 +36,20 @@ public struct ConversionEngine: Sendable {
         return String(string.map { map.convert($0) })
     }
 
+    /// Направление конвертации для готового ТЕКСТА (выделения): по преобладающему
+    /// алфавиту. Буквы смотрим только латиницу/кириллицу; если букв нет — nil.
+    public func conversionMode(for text: String) -> ConversionMode? {
+        let letters = text.filter { $0.isLetter }
+        guard !letters.isEmpty else { return nil }
+        let cyrillic = letters.filter { Self.isCyrillic($0) }.count
+        return cyrillic * 2 > letters.count ? .toEnglish : .toRussian
+    }
+
+    static func isCyrillic(_ c: Character) -> Bool {
+        guard let s = c.unicodeScalars.first, c.unicodeScalars.count == 1 else { return false }
+        return (0x0400...0x04FF).contains(s.value) || s.value == 0x0451 // ё
+    }
+
     public func isCharacterKey(_ keycode: UInt16) -> Bool {
         keycodeToCharRU[keycode] != nil || keycodeToCharEN[keycode] != nil
     }

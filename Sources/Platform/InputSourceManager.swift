@@ -52,6 +52,18 @@ public final class InputSourceManager: @unchecked Sendable {
         return false
     }
 
+    /// Активирует КОНКРЕТНУЮ раскладку (не тоггл) — для конвертации выделения,
+    /// где направление известно из текста. Fallback к firstSource("Russian") только для русской.
+    public func selectLayout(russian: Bool, russianLayoutID: String, englishLayoutID: String) {
+        let targetID = russian ? russianLayoutID : englishLayoutID
+        guard let source = source(forLayoutID: targetID)
+            ?? (russian ? firstSource(containing: "Russian") : nil) else {
+            DebugLogger.log("selectLayout: \(targetID) not found")
+            return
+        }
+        TISSelectInputSource(source)
+    }
+
     public func makeKeycodeMaps(russianLayoutID: String, englishLayoutID: String)
         -> (keycodeToCharRU: [UInt16: Character], keycodeToCharEN: [UInt16: Character]) {
         (keycodeToCharRU: charsForLayout(russianLayoutID),

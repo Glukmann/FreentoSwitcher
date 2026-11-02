@@ -9,6 +9,9 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
     private let eventTap = EventTap()
     private let sounds: SoundPlayer
     private var stateMachine: TypingStateMachine
+    /// Храним engine (а не теряем после init): нужен для конвертации выделения —
+    /// там текст уже готовый, и направление определяем по преобладающему алфавиту.
+    private let engine: ConversionEngine
     private let boundaries: WordBoundaryDetector
     private let statusBar = StatusBarController()
     /// Трекер «одиночного Option» (quick-switch): срабатывание по отпусканию.
@@ -44,7 +47,7 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
         let maps = InputSourceManager.shared.makeKeycodeMaps(
             russianLayoutID: settings.russianLayoutID,
             englishLayoutID: settings.englishLayoutID)
-        let engine = ConversionEngine(
+        engine = ConversionEngine(
             russianToEnglish: CharacterPairMap(pairs: Self.buildPairs(maps.keycodeToCharRU, maps.keycodeToCharEN)),
             englishToRussian: CharacterPairMap(pairs: Self.buildPairs(maps.keycodeToCharEN, maps.keycodeToCharRU)),
             keycodeToCharRU: maps.keycodeToCharRU,
@@ -74,7 +77,7 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
         statusBar.onQuit = { NSApplication.shared.terminate(nil) }
         statusBar.onConvertLastWord = { [weak self] in
             guard let self else { return }
-            apply(stateMachine.handleManualConvert(currentLayoutIsRussian: inputSources.isCurrentRussian()))
+            convertOrToggle()
         }
         statusBar.onToggleAutoConversion = { [weak self] in
             guard let self else { return }
@@ -112,8 +115,7 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
                 isTrackedModifier: { $0 == 0x3A || $0 == 0x3D }) // Option: левый/правый
             if fired {
                 DebugLogger.log("hotkey option-alone hit")
-                apply(stateMachine.handleManualConvert(
-                    currentLayoutIsRussian: inputSources.isCurrentRussian()))
+                convertOrToggle()
             }
             if key.keycode == 0x3A || key.keycode == 0x3D { return true }
         }
@@ -142,7 +144,7 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
            settings.hotkeyConvertLastWord.keycode != 0xFFFF,
            key.modifiers & 0x1C0000 == settings.hotkeyConvertLastWord.modifiers & 0x1C0000 {
             DebugLogger.log("hotkey convert last word hit")
-            apply(stateMachine.handleManualConvert(currentLayoutIsRussian: inputSources.isCurrentRussian()))
+            convertOrToggle()
             return false
         }
         // C2: чистые keyDown'ы модификаторов не буферизуем (иначе over-delete на 1)
@@ -165,6 +167,57 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
 
     private func manualSwitch() {
         apply(stateMachine.handleManualLayoutSwitch())
+    }
+
+    /// Общий обработчик хоткея конвертации: сначала буфер последнего слова,
+    /// и если он пуст ([.none]) — выделенный текст через буфер обмена.
+    private func convertOrToggle() {
+        let effects = stateMachine.handleManualConvert(
+            currentLayoutIsRussian: inputSources.isCurrentRussian())
+        if effects != [.none] {
+            apply(effects)
+            return
+        }
+        convertSelection()
+    }
+
+    /// Последняя конвертация выделения: (оригинал, сконвертированное).
+    /// Повторный хоткей при том же выделении откатывает обратно (Punto-style).
+    private var lastSelection: (original: String, converted: String)?
+
+    private func convertSelection() {
+        guard let sel = Clipboard.grabSelection() else { return }
+        // Откат: выделение — это ровно то, что мы сконвертировали в прошлый раз.
+        if let pair = lastSelection, sel.copied == pair.converted {
+            Clipboard.paste(pair.original)
+            usleep(80_000)
+            if let prev = sel.previous { Clipboard.restore(prev) }
+            reselect(count: pair.original.count)
+            lastSelection = (original: pair.converted, converted: pair.original)
+            sounds.play(.selectionConvert, switchingToRussian: true) // направление не критично
+            return
+        }
+        guard let mode = engine.conversionMode(for: sel.copied) else { return }
+        let converted = engine.convert(sel.copied, mode: mode)
+        guard converted != sel.copied else { return } // нечего менять
+        Clipboard.paste(converted)
+        usleep(80_000)
+        if let prev = sel.previous { Clipboard.restore(prev) }
+        reselect(count: converted.count)
+        lastSelection = (original: sel.copied, converted: converted)
+        sounds.play(.selectionConvert, switchingToRussian: mode == .toRussian)
+        // Раскладку системы приводим в соответствие с результатом (как Punto).
+        inputSources.selectLayout(russian: mode == .toRussian,
+                                  russianLayoutID: settings.russianLayoutID,
+                                  englishLayoutID: settings.englishLayoutID)
+    }
+
+    /// Выделяет вставленный текст заново: Shift+Left ×N (Punto-style,
+    /// чтобы повторное нажатие хоткея переводило тот же кусок обратно).
+    private func reselect(count: Int) {
+        for _ in 0..<min(count, 200) {
+            EventSynth.pressKey(0x7B, flags: [.maskShift]) // стрелка влево
+        }
     }
 
     private func apply(_ effects: [EngineEffect]) {
