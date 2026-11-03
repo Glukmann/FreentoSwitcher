@@ -22,6 +22,7 @@ public enum Clipboard: Sendable {
         let pb = NSPasteboard.general
         let beforeCount = pb.changeCount
         let snapshot = takeSnapshot()
+        DebugLogger.log("grab: start changeCount=\(beforeCount)")
         EventSynth.pressKeyCombination([.maskCommand], key: 0x08) // Cmd+C
         let deadline = ContinuousClock.now + .milliseconds(timeoutMilliseconds)
         while ContinuousClock.now < deadline {
@@ -29,14 +30,17 @@ public enum Clipboard: Sendable {
                 // changeCount изменился — приложение перезаписало буфер (Cmd+C сработал).
                 // Не-текст/пусто: восстанавливаем снапшот, иначе буфер пользователя потерян.
                 guard let s = pb.string(forType: .string), !s.isEmpty else {
+                    DebugLogger.log("grab: change but no string, restoring snapshot")
                     restore(snapshot)
                     return nil
                 }
+                DebugLogger.log("grab: copied count=\(s.count)")
                 return (s, snapshot)
             }
             usleep(5_000)
         }
         // changeCount не изменился — буфер не трогали, восстанавливать нечего.
+        DebugLogger.log("grab: timeout after \(timeoutMilliseconds)ms")
         return nil // выделения нет / приложение не отдало текст
     }
 
@@ -46,6 +50,7 @@ public enum Clipboard: Sendable {
     /// 300 мс (см. convertSelection); под нагрузкой вставка может не успеть и
     /// вставит уже восстановленное содержимое.
     public static func paste(_ string: String) {
+        DebugLogger.log("paste: \(string.count) chars")
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(string, forType: .string)
@@ -54,6 +59,7 @@ public enum Clipboard: Sendable {
 
     /// Полное восстановление снапшота (все типы, все элементы, исходный порядок).
     public static func restore(_ snapshot: PasteboardSnapshot) {
+        DebugLogger.log("clipboard restored")
         let pb = NSPasteboard.general
         pb.clearContents()
         let items = snapshot.items.map { saved -> NSPasteboardItem in

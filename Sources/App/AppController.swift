@@ -191,6 +191,8 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
                 // хранить их дальше небезопасно (фантомный deleteCharacters).
                 stateMachine.discardTypingBuffers()
                 convertSelection(sel)
+            } else {
+                DebugLogger.log("selection probe=true but grab failed — noop")
             }
         case .some(false):
             DebugLogger.log("probe: selection=false")
@@ -198,9 +200,11 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
         case .none:
             DebugLogger.log("probe: selection=unknown, clipboard fallback")
             if let sel = Clipboard.grabSelection() {
+                DebugLogger.log("selection via clipboard fallback")
                 stateMachine.discardTypingBuffers() // см. .some(true)
                 convertSelection(sel)
             } else {
+                DebugLogger.log("probe=unknown, grab failed — word path")
                 apply(stateMachine.handleManualConvert(currentLayoutIsRussian: isRussian))
             }
         }
@@ -211,8 +215,10 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
     private var lastSelection: (original: String, converted: String)?
 
     private func convertSelection(_ sel: (copied: String, snapshot: PasteboardSnapshot)) {
+        DebugLogger.log("convertSelection: copied=\(sel.copied.count) chars")
         // Откат: выделение — это ровно то, что мы сконвертировали в прошлый раз.
         if let pair = lastSelection, sel.copied == pair.converted {
+            DebugLogger.log("selection toggle-back")
             Clipboard.paste(pair.original)
             usleep(300_000) // вставка успела прочитать буфер — вернём пользователю снапшот
             Clipboard.restore(sel.snapshot)
@@ -223,16 +229,19 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
         }
         // Выделение без букв — вставки ещё не было, буфер возвращаем сразу (sleep не нужен).
         guard let mode = engine.conversionMode(for: sel.copied) else {
+            DebugLogger.log("selection: no letters, skip")
             Clipboard.restore(sel.snapshot)
             return
         }
         let converted = engine.convert(sel.copied, mode: mode)
         // Буквы не маппятся RU↔EN — вставки ещё не было, буфер возвращаем сразу (sleep не нужен).
         guard converted != sel.copied else {
+            DebugLogger.log("selection: nothing to convert, skip")
             Clipboard.restore(sel.snapshot)
             return
         }
         Clipboard.paste(converted)
+        DebugLogger.log("selection: converted \(mode) → pasted, reselect \(converted.count)")
         usleep(300_000) // вставка успела прочитать буфер — вернём пользователю снапшот
         Clipboard.restore(sel.snapshot)
         reselect(count: converted.count)
@@ -247,6 +256,7 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
     /// Выделяет вставленный текст заново: Shift+Left ×N (Punto-style,
     /// чтобы повторное нажатие хоткея переводило тот же кусок обратно).
     private func reselect(count: Int) {
+        DebugLogger.log("reselect: \(count) shift-lefts")
         for _ in 0..<min(count, 200) {
             EventSynth.pressKey(0x7B, flags: [.maskShift]) // стрелка влево
         }
