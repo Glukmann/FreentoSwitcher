@@ -172,26 +172,31 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
         apply(stateMachine.handleManualLayoutSwitch())
     }
 
-    /// Общий обработчик хоткея конвертации: сначала буфер последнего слова,
-    /// при пустом буфере — выделение (если оно есть), иначе откат слова.
+    /// Общий обработчик хоткея конвертации. Word-путь (backspace'ы + реплей)
+    /// безопасен только при пустом выделении: выделение мышкой не генерирует
+    /// клавиш, поэтому наш буфер набора может быть непустым ПРИ активном
+    /// выделении — backspace съест выделение + текст перед ним. Маршрутизация:
+    /// выделение есть → конвертация выделения; нет → word-путь; AX молчит →
+    /// clipboard-probe, не нашёл текст → word-путь.
     private func convertOrToggle() {
-        // Быстрый путь: в буфере есть набранное слово — конвертируем его,
-        // не трогаем буфер обмена (выделение после набора неактивно по построению).
-        if stateMachine.rawBuffer.count > 0 {
-            apply(stateMachine.handleManualConvert(
-                currentLayoutIsRussian: inputSources.isCurrentRussian()))
-            return
+        let isRussian = inputSources.isCurrentRussian()
+        switch SelectionProbe.hasSelection() {
+        case .some(true):
+            DebugLogger.log("probe: selection=true")
+            // AX говорит выделение есть, но копирование не удалось —
+            // НЕ лезем в word path (деструктивно). Просто ничего.
+            if let sel = Clipboard.grabSelection() { convertSelection(sel) }
+        case .some(false):
+            DebugLogger.log("probe: selection=false")
+            apply(stateMachine.handleManualConvert(currentLayoutIsRussian: isRussian))
+        case .none:
+            DebugLogger.log("probe: selection=unknown, clipboard fallback")
+            if let sel = Clipboard.grabSelection() {
+                convertSelection(sel)
+            } else {
+                apply(stateMachine.handleManualConvert(currentLayoutIsRussian: isRussian))
+            }
         }
-        // Буфер слова пуст: сначала проверяем выделение — если оно есть,
-        // конвертируем ЕГО, а не откатываем слово (откат с активным выделением
-        // деструктивен: backspace съедает выделение + текст перед ним).
-        if let sel = Clipboard.grabSelection() {
-            convertSelection(sel)
-            return
-        }
-        let effects = stateMachine.handleManualConvert(
-            currentLayoutIsRussian: inputSources.isCurrentRussian())
-        apply(effects) // undo-путь или [.none]
     }
 
     /// Последняя конвертация выделения: (оригинал, сконвертированное).
