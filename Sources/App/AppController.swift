@@ -177,35 +177,45 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
     /// клавиш, поэтому наш буфер набора может быть непустым ПРИ активном
     /// выделении — backspace съест выделение + текст перед ним. Маршрутизация:
     /// выделение есть → конвертация выделения; нет → word-путь; AX молчит →
-    /// clipboard-probe, не нашёл текст → word-путь.
+    /// clipboard-probe, не нашёл текст → word-путь. Selection-путь уходит в
+    /// фон: grab ждёт наш же синтетический Cmd+C, а его событие не пройдёт
+    /// session-tap, пока этот колбэк заблокирован (self-deadlock) — колбэк
+    /// возвращается немедленно, решение по word path откладывается.
     private func convertOrToggle() {
         let isRussian = inputSources.isCurrentRussian()
-        switch SelectionProbe.hasSelection() {
-        case .some(true):
-            DebugLogger.log("probe: selection=true")
-            // AX говорит выделение есть, но копирование не удалось —
-            // НЕ лезем в word path (деструктивно). Просто ничего.
-            if let sel = Clipboard.grabSelection() {
-                // selection-путь при непустом буфере набора: штрихи больше
-                // не соответствуют тексту (мышь разорвала корреспонденцию) —
-                // хранить их дальше небезопасно (фантомный deleteCharacters).
-                stateMachine.discardTypingBuffers()
-                convertSelection(sel)
-            } else {
-                DebugLogger.log("selection probe=true but grab failed — noop")
-            }
+        let probe = SelectionProbe.hasSelection()
+        switch probe {
         case .some(false):
             DebugLogger.log("probe: selection=false")
+            // Выделения точно нет — word path синхронно (как раньше, работает).
             apply(stateMachine.handleManualConvert(currentLayoutIsRussian: isRussian))
-        case .none:
-            DebugLogger.log("probe: selection=unknown, clipboard fallback")
-            if let sel = Clipboard.grabSelection() {
-                DebugLogger.log("selection via clipboard fallback")
-                stateMachine.discardTypingBuffers() // см. .some(true)
-                convertSelection(sel)
+        case .some(true), .none:
+            if case .some(true) = probe {
+                DebugLogger.log("probe: selection=true")
             } else {
-                DebugLogger.log("probe=unknown, grab failed — word path")
-                apply(stateMachine.handleManualConvert(currentLayoutIsRussian: isRussian))
+                DebugLogger.log("probe: selection=unknown, clipboard fallback")
+            }
+            DispatchQueue.global(qos: .userInitiated).async { [weak self, probe] in
+                guard let self else { return }
+                if let sel = Clipboard.grabSelection() {
+                    DebugLogger.log("grab ok, selection path (async)")
+                    Task { @MainActor in
+                        // selection-путь при непустом буфере набора: штрихи больше
+                        // не соответствуют тексту (мышь разорвала корреспонденцию) —
+                        // хранить их дальше небезопасно (фантомный deleteCharacters).
+                        self.stateMachine.discardTypingBuffers()
+                        self.convertSelection(sel)
+                    }
+                } else if case .none = probe {
+                    // AX молчал и копирования нет — word path с отложенным решением.
+                    DebugLogger.log("async: no selection, word path")
+                    Task { @MainActor in
+                        self.apply(self.stateMachine.handleManualConvert(
+                            currentLayoutIsRussian: self.inputSources.isCurrentRussian()))
+                    }
+                } else {
+                    DebugLogger.log("async: probe=true grab failed — noop")
+                }
             }
         }
     }

@@ -17,7 +17,7 @@ public enum Clipboard: Sendable {
     /// Копирует выделение (Cmd+C) и ждёт смены changeCount до timeout.
     /// Возвращает скопированную строку и снапшот буфера ДО копирования
     /// (восстановить — через restore(snapshot) на всех путях, где был grabSelection).
-    public static func grabSelection(timeoutMilliseconds: Int = 150)
+    public static func grabSelection(timeoutMilliseconds: Int = 250)
         -> (copied: String, snapshot: PasteboardSnapshot)? {
         let pb = NSPasteboard.general
         let beforeCount = pb.changeCount
