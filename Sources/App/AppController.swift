@@ -187,11 +187,11 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
     /// безопасен только при пустом выделении: выделение мышкой не генерирует
     /// клавиш, поэтому наш буфер набора может быть непустым ПРИ активном
     /// выделении — backspace съест выделение + текст перед ним. Маршрутизация:
-    /// выделение есть → конвертация выделения; нет → word-путь; AX молчит →
-    /// clipboard-probe, не нашёл текст → word-путь. Selection-путь уходит в
-    /// фон: grab ждёт наш же синтетический Cmd+C, а его событие не пройдёт
-    /// session-tap, пока этот колбэк заблокирован (self-deadlock) — колбэк
-    /// возвращается немедленно, решение по word path откладывается.
+    /// выделение есть → конвертация выделения; нет → word-путь; в фоне сначала
+    /// AX (атрибутная замена, без буфера), AX молчит → clipboard-probe, не нашёл
+    /// текст → word-путь. Selection-путь уходит в фон: AX-чтение/ grab ждут
+    /// событий/ответов фронт-приложения, а колбэк тапа должен вернуться
+    /// немедленно (иначе self-deadlock на синтетическом Cmd+C).
     private func convertOrToggle() {
         let isRussian = inputSources.isCurrentRussian()
         let probe = SelectionProbe.hasSelection()
@@ -208,8 +208,23 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
             }
             DispatchQueue.global(qos: .userInitiated).async { [weak self, probe] in
                 guard let self else { return }
+                // Primary: AX — атомарная замена выделения, без буфера обмена
+                // (у clipboard-пути paste→restore гонка на медленных приложениях).
+                if let selected = AXSelection.readSelectedText() {
+                    DebugLogger.log("grab: AX selected text ok, \(selected.utf16.count) utf16")
+                    Task { @MainActor in
+                        // selection-путь при непустом буфере набора: штрихи больше
+                        // не соответствуют тексту (мышь разорвала корреспонденцию) —
+                        // хранить их дальше небезопасно (фантомный deleteCharacters).
+                        self.stateMachine.discardTypingBuffers()
+                        self.convertSelectionAX(selected)
+                    }
+                    return
+                }
+                DebugLogger.log("grab: AX read failed, clipboard fallback")
+                // Fallback: буфер обмена (прежний путь целиком).
                 if let sel = Clipboard.grabSelection() {
-                    DebugLogger.log("grab ok, selection path (async)")
+                    DebugLogger.log("grab ok, selection path via clipboard (async)")
                     Task { @MainActor in
                         // selection-путь при непустом буфере набора: штрихи больше
                         // не соответствуют тексту (мышь разорвала корреспонденцию) —
@@ -267,6 +282,45 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
         Clipboard.restore(sel.snapshot)
         reselect(count: converted.count)
         lastSelection = (original: sel.copied, converted: converted)
+        sounds.play(.selectionConvert, switchingToRussian: mode == .toRussian)
+        // Раскладку системы приводим в соответствие с результатом (как Punto).
+        inputSources.selectLayout(russian: mode == .toRussian,
+                                  russianLayoutID: settings.russianLayoutID,
+                                  englishLayoutID: settings.englishLayoutID)
+    }
+
+    /// Конвертация выделения через AX: атомарная замена, без буфера обмена
+    /// и его гонок. Зеркалит convertSelection; lastSelection общий для обоих
+    /// путей — повторный хоткей откатывает то, что вставилось последним.
+    private func convertSelectionAX(_ selected: String) {
+        DebugLogger.log("convertSelectionAX: \(selected.utf16.count) utf16")
+        // Откат: выделение — ровно то, что мы сконвертировали в прошлый раз.
+        if let pair = lastSelection, selected == pair.converted {
+            DebugLogger.log("selection toggle-back (AX)")
+            guard AXSelection.replaceSelection(with: pair.original) else {
+                DebugLogger.log("selection: AX replace failed on toggle-back")
+                return
+            }
+            AXSelection.reselectLast(pair.original.utf16.count)
+            lastSelection = (original: pair.converted, converted: pair.original)
+            sounds.play(.selectionConvert, switchingToRussian: true) // направление не критично
+            return
+        }
+        guard let mode = engine.conversionMode(for: selected) else {
+            DebugLogger.log("selection: no letters, skip")
+            return
+        }
+        let converted = engine.convert(selected, mode: mode)
+        guard converted != selected else {
+            DebugLogger.log("selection: nothing to convert, skip")
+            return
+        }
+        guard AXSelection.replaceSelection(with: converted) else {
+            DebugLogger.log("selection: AX replace failed")
+            return
+        }
+        AXSelection.reselectLast(converted.utf16.count)
+        lastSelection = (original: selected, converted: converted)
         sounds.play(.selectionConvert, switchingToRussian: mode == .toRussian)
         // Раскладку системы приводим в соответствие с результатом (как Punto).
         inputSources.selectLayout(russian: mode == .toRussian,
