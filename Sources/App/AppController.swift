@@ -310,7 +310,10 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
                 let table = InputSourceManager.isRussianLayoutID(layoutID) ? charToKeyRU : charToKeyEN
                 for c in word {
                     guard let mapping = table[c] else {
-                        DebugLogger.log("replay: no keycode for \(c) in \(layoutID), skipped")
+                        // Символа нет в целевой раскладке (RU: ' [ ] ` ~ @#..., EN: №):
+                        // молчаливый пропуск исказил бы текст (стёрли N, вставили <N).
+                        DebugLogger.log("replay: no keycode for \(c), unicode fallback")
+                        EventSynth.postText(String(c))
                         continue
                     }
                     EventSynth.pressKey(mapping.keycode,
