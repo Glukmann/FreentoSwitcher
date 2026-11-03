@@ -70,10 +70,12 @@ public final class InputSourceManager: @unchecked Sendable {
 
     public func makeKeycodeMaps(russianLayoutID: String, englishLayoutID: String)
         -> (keycodeToCharRU: [UInt16: Character], keycodeToCharEN: [UInt16: Character],
-            charToKeyRU: [Character: CharKeyMapping], charToKeyEN: [Character: CharKeyMapping]) {
+            charToKeyRU: [Character: CharKeyMapping], charToKeyEN: [Character: CharKeyMapping],
+            keycodeToCharShiftRU: [UInt16: Character], keycodeToCharShiftEN: [UInt16: Character]) {
         let ru = mapsForLayout(russianLayoutID)
         let en = mapsForLayout(englishLayoutID)
-        return (ru.forward, en.forward, ru.reverse, en.reverse)
+        return (ru.forward, en.forward, ru.reverse, en.reverse,
+                ru.shiftForward, en.shiftForward)
     }
 
     /// Русской считаем любую раскладку, чей ID содержит "Russian"/"рус" либо "ru".
@@ -135,20 +137,23 @@ public final class InputSourceManager: @unchecked Sendable {
     }
 
     /// Один проход UCKeyTranslate по keycode'ам 0...127 и слоям base/shift:
-    /// собирает прямую таблицу (keycode → символ; base побеждает shift) и
-    /// обратную (символ → (keycode, needsShift); для той же буквы base тоже
+    /// собирает прямую таблицу (keycode → символ; base побеждает shift), таблицу
+    /// shift-слоя (keycode → символ со Shift — для чтения буфера с регистром, D8)
+    /// и обратную (символ → (keycode, needsShift); для той же буквы base тоже
     /// побеждает — он обрабатывается первым).
     private func mapsForLayout(_ layoutID: String)
-        -> (forward: [UInt16: Character], reverse: [Character: CharKeyMapping]) {
+        -> (forward: [UInt16: Character], reverse: [Character: CharKeyMapping],
+            shiftForward: [UInt16: Character]) {
         guard let source = source(forLayoutID: layoutID),
               let data = property(source, kTISPropertyUnicodeKeyLayoutData) as? Data
-        else { return ([:], [:]) }
+        else { return ([:], [:], [:]) }
         let kbdType = UInt32(LMGetKbdType())
         return data.withUnsafeBytes { raw in
             guard let layout = raw.bindMemory(to: UCKeyboardLayout.self).baseAddress
-            else { return ([:], [:]) }
+            else { return ([:], [:], [:]) }
             var forward: [UInt16: Character] = [:]
             var reverse: [Character: CharKeyMapping] = [:]
+            var shiftForward: [UInt16: Character] = [:]
             for keycode: UInt16 in 0...127 {
                 for (mods, needsShift) in [(UInt32(0), false), (UInt32(shiftKey >> 8), true)] {
                     var deadKeyState: UInt32 = 0
@@ -167,12 +172,15 @@ public final class InputSourceManager: @unchecked Sendable {
                     if forward[keycode] == nil {
                         forward[keycode] = c
                     }
+                    if needsShift {
+                        shiftForward[keycode] = c
+                    }
                     if reverse[c] == nil {
                         reverse[c] = (keycode: keycode, needsShift: needsShift)
                     }
                 }
             }
-            return (forward, reverse)
+            return (forward, reverse, shiftForward)
         }
     }
 }

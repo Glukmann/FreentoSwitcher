@@ -56,7 +56,9 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
             englishToRussian: CharacterPairMap(pairs: ConversionEngine.buildPairs(
                 from: maps.keycodeToCharEN, to: maps.keycodeToCharRU)),
             keycodeToCharRU: maps.keycodeToCharRU,
-            keycodeToCharEN: maps.keycodeToCharEN)
+            keycodeToCharEN: maps.keycodeToCharEN,
+            keycodeToCharShiftRU: maps.keycodeToCharShiftRU,
+            keycodeToCharShiftEN: maps.keycodeToCharShiftEN)
         // Триггеры храним в «как напечатано» форме: check() вызывается с текстом,
         // прочитанным через таблицу ТЕКУЩЕЙ раскладки (typed), поэтому
         // кириллические сиды переводим в их EN-отображение («привет» → «ghbdtn»).

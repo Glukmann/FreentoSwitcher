@@ -37,6 +37,21 @@ struct TypingStateMachineTests {
                                   checker: LayoutChecker(triggers: triggers, userRules: []))
     }
 
+    /// Фикстура D8: та же раскладка, что у makeSM, плюс shift-слой для
+    /// 0x0C ('d'/'в') и 0x27 ('l'/'д') — регистр читается из флага штриха.
+    func makeSMCase(triggers: [String] = ["zzzzz"]) -> TypingStateMachine {
+        let s = AppSettings.default
+        let engine = ConversionEngine(
+            russianToEnglish: CharacterPairMap(pairs: ["в":"d","б":"b","о":"o","р":"g","д":"l"]),
+            englishToRussian: CharacterPairMap(pairs: ["d":"в","b":"б","o":"о","g":"р","l":"д"]),
+            keycodeToCharRU: [0x0C:"в", 0x2F:"о", 0x2B:"б", 0x1E:"р", 0x27:"д"],
+            keycodeToCharEN: [0x0C:"d", 0x2F:"o", 0x2B:"b", 0x1E:"g", 0x27:"l"],
+            keycodeToCharShiftRU: [0x0C:"В", 0x27:"Д"],
+            keycodeToCharShiftEN: [0x0C:"D", 0x27:"L"])
+        return TypingStateMachine(settings: s, engine: engine,
+                                  checker: LayoutChecker(triggers: triggers, userRules: []))
+    }
+
     /// Набор слова "dbogl" (keycode'ы фикстуры) в EN-раскладке.
     func typeDbogl(_ sm: inout TypingStateMachine, layoutIsRussian: Bool = false) {
         for k: UInt16 in [0x0C, 0x2B, 0x2F, 0x1E, 0x27] {
@@ -79,6 +94,48 @@ struct TypingStateMachineTests {
             return w == "привет." && l == ruLayoutID } else { return false } })
         #expect(effects.contains(.playSound(.autoConvert)))
         #expect(sm.rawBuffer.count == 0)
+    }
+
+    // MARK: - D8: регистр букв сохраняется посимвольно
+
+    @Test func conversionPreservesLetterCase() {
+        // D8: «DbogL» (Shift на первой и последней клавишах) → «ВборД»,
+        // регистр каждой буквы переносится; deleteCharacters по длине typed (I2).
+        var sm = makeSMCase()
+        let word: [(UInt16, UInt64)] = [
+            (0x0C, 0x20000), (0x2B, 0), (0x2F, 0), (0x1E, 0), (0x27, 0x20000),
+        ]
+        for (k, m) in word {
+            _ = sm.handleKeyDown(KeyStroke(keycode: k, modifiers: m), isSeparator: false,
+                                 currentLayoutIsRussian: false)
+        }
+        let effects = sm.handleManualConvert(currentLayoutIsRussian: false)
+        #expect(effects.contains(.switchLayout))
+        #expect(effects.contains(.deleteCharacters(count: 5)))
+        #expect(effects.contains { if case .replayText(let w, let l) = $0 {
+            return w == "ВборД" && l == ruLayoutID } else { return false } })
+        // toggle обратно возвращает исходный текст с исходным регистром
+        let back = sm.handleManualConvert(currentLayoutIsRussian: false)
+        #expect(back.contains(.deleteCharacters(count: 5)))
+        #expect(back.contains { if case .replayText(let w, let l) = $0 {
+            return w == "DbogL" && l == enLayoutID } else { return false } })
+    }
+
+    @Test func autoConversionPreservesLetterCase() {
+        // D8 на auto-пути: то же слово, конвертация по сепаратору.
+        var sm = makeSMCase(triggers: ["dbogl"])
+        let word: [(UInt16, UInt64)] = [
+            (0x0C, 0x20000), (0x2B, 0), (0x2F, 0), (0x1E, 0), (0x27, 0x20000),
+        ]
+        for (k, m) in word {
+            _ = sm.handleKeyDown(KeyStroke(keycode: k, modifiers: m), isSeparator: false,
+                                 currentLayoutIsRussian: false)
+        }
+        let effects = sm.handleKeyDown(KeyStroke(keycode: 0x31, modifiers: 0), isSeparator: true,
+                                       currentLayoutIsRussian: false)
+        #expect(effects.contains(.deleteCharacters(count: 5)))
+        #expect(effects.contains { if case .replayText(let w, let l) = $0 {
+            return w == "ВборД" && l == ruLayoutID } else { return false } })
     }
 
     // MARK: - UC-3: бесконечное переключение (swap пары)

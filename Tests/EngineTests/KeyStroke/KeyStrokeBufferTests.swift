@@ -52,4 +52,29 @@ struct KeyStrokeBufferTests {
         b2.append(KeyStroke(keycode: 0x0C, modifiers: 0))
         #expect(!b2.beginsWithPunctuation)
     }
+
+    @Test func stringValueReadsShiftLayerByModifierFlag() {
+        let engine = ConversionEngine(
+            russianToEnglish: CharacterPairMap(pairs: [:]),
+            englishToRussian: CharacterPairMap(pairs: [:]),
+            keycodeToCharRU: [0x0C: "в"],
+            keycodeToCharEN: [0x0C: "d"],
+            keycodeToCharShiftRU: [0x0C: "В"],
+            keycodeToCharShiftEN: [0x0C: "D"])
+        var b = KeyStrokeBuffer()
+        b.layoutID = "com.apple.keylayout.ABC"
+        b.append(KeyStroke(keycode: 0x0C, modifiers: 0))
+        b.append(KeyStroke(keycode: 0x0C, modifiers: 0x20000)) // Shift-флаг
+        #expect(b.stringValue(convertingWith: engine) == "dD")
+        // Shift-флаг без shift-символа в таблице → fallback на base
+        let engineNoShift = ConversionEngine(
+            russianToEnglish: CharacterPairMap(pairs: [:]),
+            englishToRussian: CharacterPairMap(pairs: [:]),
+            keycodeToCharRU: [0x0C: "в"],
+            keycodeToCharEN: [0x0C: "d"])
+        var b2 = KeyStrokeBuffer()
+        b2.layoutID = "com.apple.keylayout.ABC"
+        b2.append(KeyStroke(keycode: 0x0C, modifiers: 0x20000))
+        #expect(b2.stringValue(convertingWith: engineNoShift) == "d")
+    }
 }

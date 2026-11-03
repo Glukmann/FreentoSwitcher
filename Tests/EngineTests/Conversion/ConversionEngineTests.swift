@@ -106,6 +106,22 @@ struct ConversionEngineTests {
         #expect(e.convert("привет, мир!", mode: .toEnglish) == "ghbdtn, vbh!")
     }
 
+    @Test func convertPreservingCaseRoundTripsRegister() {
+        let e = makeRealPairsEngine()
+        // D8: регистр переносится посимвольно, в обе стороны
+        #expect(e.convertPreservingCase("GhbdtN", mode: .toRussian) == "ПривеТ")
+        #expect(e.convertPreservingCase("ПривеТ", mode: .toEnglish) == "GhbdtN")
+        // строчные — регрессия прежнего поведения
+        #expect(e.convertPreservingCase("ghbdtn", mode: .toRussian) == "привет")
+    }
+
+    @Test func convertPreservingCaseLeavesCaselessCharacters() {
+        let e = makeRealPairsEngine()
+        // символы без регистра (цифры, пунктуация, пробел) не меняются (I6)
+        #expect(e.convertPreservingCase("1., !", mode: .toRussian) == "1., !")
+        #expect(e.convertPreservingCase("ghbdtn. 1", mode: .toRussian) == "привет. 1")
+    }
+
     @Test func punctuationIdentitySetContents() {
         #expect(ConversionEngine.punctuationIdentity.contains("."))
         #expect(ConversionEngine.punctuationIdentity.contains(","))

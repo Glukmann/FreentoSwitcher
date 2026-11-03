@@ -123,7 +123,7 @@ public struct TypingStateMachine: Sendable {
         rawBuffer.layoutID = currentLayoutIsRussian ? settings.russianLayoutID : settings.englishLayoutID
         let typed = rawBuffer.stringValue(convertingWith: engine)
         let mode: ConversionMode = currentLayoutIsRussian ? .toEnglish : .toRussian
-        let converted = engine.convert(typed, mode: mode)
+        let converted = engine.convertPreservingCase(typed, mode: mode)
         let sourceLayoutID = currentLayoutIsRussian ? settings.russianLayoutID : settings.englishLayoutID
         let targetLayoutID = currentLayoutIsRussian ? settings.englishLayoutID : settings.russianLayoutID
         // UC-3: пара переключения := (текущий: converted + целевая; другой: typed + исходная)
@@ -164,7 +164,7 @@ public struct TypingStateMachine: Sendable {
         let verdict = checker.check(typed, isEnglishLayout: true)
         switch verdict {
         case .incorrectLayout:
-            let converted = engine.convert(typed, mode: .toRussian)
+            let converted = engine.convertPreservingCase(typed, mode: .toRussian)
             // UC-3: пара переключения := (текущий: converted + RU; другой: typed + EN)
             toggleCurrent = (converted, settings.russianLayoutID)
             toggleOther = (typed, settings.englishLayoutID)

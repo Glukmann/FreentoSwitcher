@@ -33,20 +33,42 @@ public struct ConversionEngine: Sendable {
     private let englishToRussian: CharacterPairMap
     private let keycodeToCharRU: [UInt16: Character]
     private let keycodeToCharEN: [UInt16: Character]
+    /// Shift-слой (D8): штрих с Shift-флагом читается через эти таблицы.
+    private let keycodeToCharShiftRU: [UInt16: Character]
+    private let keycodeToCharShiftEN: [UInt16: Character]
 
     public init(russianToEnglish: CharacterPairMap,
                 englishToRussian: CharacterPairMap,
                 keycodeToCharRU: [UInt16: Character],
-                keycodeToCharEN: [UInt16: Character]) {
+                keycodeToCharEN: [UInt16: Character],
+                keycodeToCharShiftRU: [UInt16: Character] = [:],
+                keycodeToCharShiftEN: [UInt16: Character] = [:]) {
         self.russianToEnglish = russianToEnglish
         self.englishToRussian = englishToRussian
         self.keycodeToCharRU = keycodeToCharRU
         self.keycodeToCharEN = keycodeToCharEN
+        self.keycodeToCharShiftRU = keycodeToCharShiftRU
+        self.keycodeToCharShiftEN = keycodeToCharShiftEN
     }
 
     public func convert(_ string: String, mode: ConversionMode) -> String {
         let map = mode == .toEnglish ? russianToEnglish : englishToRussian
         return String(string.map { map.convert($0) })
+    }
+
+    /// Конвертация с переносом регистра (D8): регистр каждой буквы источника
+    /// переносится на результат. Пунктуация — тождественно (I6).
+    public func convertPreservingCase(_ text: String, mode: ConversionMode) -> String {
+        String(text.map { c in
+            guard c.isLetter else { return c }
+            let lower = c.lowercased()
+            let mapped = convert(lower, mode: mode)
+            let isUpper = c.uppercased() == String(c) && lower != String(c)
+            if isUpper, let up = mapped.uppercased().first {
+                return up
+            }
+            return mapped.first ?? c
+        })
     }
 
     /// Пары «источник → приёмник» по позициям клавиш (один keycode в двух
@@ -82,8 +104,17 @@ public struct ConversionEngine: Sendable {
     }
 
     public func string(for strokes: [KeyStroke], layoutID: String) -> String {
-        let table = isRussianLayoutID(layoutID) ? keycodeToCharRU : keycodeToCharEN
-        return String(strokes.compactMap { table[$0.keycode] })
+        let isRussian = isRussianLayoutID(layoutID)
+        let base = isRussian ? keycodeToCharRU : keycodeToCharEN
+        let shift = isRussian ? keycodeToCharShiftRU : keycodeToCharShiftEN
+        return String(strokes.compactMap { stroke in
+            // Shift-флаг (0x20000) выбирает shift-слой; шум 0x100 маской не трогаем.
+            // Нет shift-символа для клавиши — fallback на base (регистра нет).
+            if stroke.modifiers & 0x20000 != 0 {
+                return shift[stroke.keycode] ?? base[stroke.keycode]
+            }
+            return base[stroke.keycode]
+        })
     }
 
     private func isRussianLayoutID(_ id: String) -> Bool {
