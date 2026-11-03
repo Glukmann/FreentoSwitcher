@@ -89,6 +89,15 @@ public struct TypingStateMachine: Sendable {
         autoConvertEnabled = on
     }
 
+    /// Сброс буферов набора без эффектов. Нужен, когда selection-путь отработал
+    /// при непустом rawBuffer: корреспонденция «keystrokes ↔ текст в поле»
+    /// разорвана (мышь/вставка), хранить штрихи дальше небезопасно — на
+    /// сепараторе deleteCharacters перестёр бы чужой текст.
+    public mutating func discardTypingBuffers() {
+        rawBuffer.removeAll()
+        undoBuffer.removeAll()
+    }
+
     /// A2-manual: принудительная конвертация последнего слова (ручная, как в Punto):
     /// без словаря, всегда переводит, меняет раскладку и перепечатывает слово.
     /// Каноничное поведение Punto: повторное нажатие сразу после конвертации

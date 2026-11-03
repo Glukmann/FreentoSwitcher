@@ -185,13 +185,20 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
             DebugLogger.log("probe: selection=true")
             // AX говорит выделение есть, но копирование не удалось —
             // НЕ лезем в word path (деструктивно). Просто ничего.
-            if let sel = Clipboard.grabSelection() { convertSelection(sel) }
+            if let sel = Clipboard.grabSelection() {
+                // selection-путь при непустом буфере набора: штрихи больше
+                // не соответствуют тексту (мышь разорвала корреспонденцию) —
+                // хранить их дальше небезопасно (фантомный deleteCharacters).
+                stateMachine.discardTypingBuffers()
+                convertSelection(sel)
+            }
         case .some(false):
             DebugLogger.log("probe: selection=false")
             apply(stateMachine.handleManualConvert(currentLayoutIsRussian: isRussian))
         case .none:
             DebugLogger.log("probe: selection=unknown, clipboard fallback")
             if let sel = Clipboard.grabSelection() {
+                stateMachine.discardTypingBuffers() // см. .some(true)
                 convertSelection(sel)
             } else {
                 apply(stateMachine.handleManualConvert(currentLayoutIsRussian: isRussian))

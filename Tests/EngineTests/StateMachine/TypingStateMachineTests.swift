@@ -354,4 +354,20 @@ struct TypingStateMachineTests {
             return s.count == 3 && word == "dbo" } else { return false } }) // не "вбо"
         #expect(undo.contains(.playSound(.undo)))
     }
+
+    @Test func discardTypingBuffersPreventsPhantomDelete() {
+        // selection-путь при непустом rawBuffer (набрал слово → выделил мышкой):
+        // App сбрасывает буферы — иначе после сепаратора фантомный буфер
+        // стёр бы чужие символы перед кареткой
+        var sm = makeSM()
+        for k: UInt16 in [0x0C, 0x2B, 0x2F, 0x1E, 0x27] {
+            _ = sm.handleKeyDown(KeyStroke(keycode: k, modifiers: 0), isSeparator: false, currentLayoutIsRussian: false)
+        }
+        #expect(sm.rawBuffer.count == 5)
+        sm.discardTypingBuffers()
+        #expect(sm.rawBuffer.count == 0)
+        let effects = sm.handleKeyDown(KeyStroke(keycode: 0x31, modifiers: 0), isSeparator: true, currentLayoutIsRussian: false)
+        #expect(!effects.contains { if case .deleteCharacters = $0 { return true } else { return false } })
+        #expect(effects == [.none])
+    }
 }
