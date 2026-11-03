@@ -64,10 +64,26 @@ public final class InputSourceManager: @unchecked Sendable {
         TISSelectInputSource(source)
     }
 
+    /// Обратная таблица «символ → (keycode, нужен ли Shift)» для посимвольного
+    /// keycode-реплея результата конвертации в целевой раскладке.
+    public typealias CharKeyMapping = (keycode: UInt16, needsShift: Bool)
+
     public func makeKeycodeMaps(russianLayoutID: String, englishLayoutID: String)
-        -> (keycodeToCharRU: [UInt16: Character], keycodeToCharEN: [UInt16: Character]) {
-        (keycodeToCharRU: charsForLayout(russianLayoutID),
-         keycodeToCharEN: charsForLayout(englishLayoutID))
+        -> (keycodeToCharRU: [UInt16: Character], keycodeToCharEN: [UInt16: Character],
+            charToKeyRU: [Character: CharKeyMapping], charToKeyEN: [Character: CharKeyMapping]) {
+        let ru = mapsForLayout(russianLayoutID)
+        let en = mapsForLayout(englishLayoutID)
+        return (ru.forward, en.forward, ru.reverse, en.reverse)
+    }
+
+    /// Русской считаем любую раскладку, чей ID содержит "Russian"/"рус" либо "ru".
+    /// Дублирует логику Engine (там она private) — нужна App для выбора обратной
+    /// таблицы под layoutID эффекта .replayText.
+    public static func isRussianLayoutID(_ id: String) -> Bool {
+        let lower = id.lowercased()
+        return lower == "ru"
+            || lower.localizedCaseInsensitiveContains("russian")
+            || lower.localizedCaseInsensitiveContains("рус")
     }
 
     public func allLayoutIDs() -> [String] {
@@ -118,34 +134,45 @@ public final class InputSourceManager: @unchecked Sendable {
         }
     }
 
-    private func charsForLayout(_ layoutID: String) -> [UInt16: Character] {
+    /// Один проход UCKeyTranslate по keycode'ам 0...127 и слоям base/shift:
+    /// собирает прямую таблицу (keycode → символ; base побеждает shift) и
+    /// обратную (символ → (keycode, needsShift); для той же буквы base тоже
+    /// побеждает — он обрабатывается первым).
+    private func mapsForLayout(_ layoutID: String)
+        -> (forward: [UInt16: Character], reverse: [Character: CharKeyMapping]) {
         guard let source = source(forLayoutID: layoutID),
               let data = property(source, kTISPropertyUnicodeKeyLayoutData) as? Data
-        else { return [:] }
+        else { return ([:], [:]) }
         let kbdType = UInt32(LMGetKbdType())
         return data.withUnsafeBytes { raw in
             guard let layout = raw.bindMemory(to: UCKeyboardLayout.self).baseAddress
-            else { return [:] }
-            var result: [UInt16: Character] = [:]
+            else { return ([:], [:]) }
+            var forward: [UInt16: Character] = [:]
+            var reverse: [Character: CharKeyMapping] = [:]
             for keycode: UInt16 in 0...127 {
-                for mods: UInt32 in [0, UInt32(shiftKey >> 8)] { // base, shift
+                for (mods, needsShift) in [(UInt32(0), false), (UInt32(shiftKey >> 8), true)] {
                     var deadKeyState: UInt32 = 0
                     var chars = [UniChar](repeating: 0, count: 8)
                     var length = 0
                     let status = UCKeyTranslate(layout, keycode, UInt16(kUCKeyActionDown), mods,
                                                 kbdType, 0, &deadKeyState,
                                                 chars.count, &length, &chars)
-                    if status == noErr, length == 1, let scalar = Unicode.Scalar(chars[0]) {
-                        // Base wins: shift-символы асимметричны между раскладками
-                        // (EN shift+3 = "#", RU = "№"), а LayoutChecker всё равно
-                        // lowercases буквы при проверке слова.
-                        if result[keycode] == nil {
-                            result[keycode] = Character(scalar)
-                        }
+                    guard status == noErr, length == 1, let scalar = Unicode.Scalar(chars[0]) else {
+                        continue
+                    }
+                    let c = Character(scalar)
+                    // Base wins: shift-символы асимметричны между раскладками
+                    // (EN shift+3 = "#", RU = "№"), а LayoutChecker всё равно
+                    // lowercases буквы при проверке слова.
+                    if forward[keycode] == nil {
+                        forward[keycode] = c
+                    }
+                    if reverse[c] == nil {
+                        reverse[c] = (keycode: keycode, needsShift: needsShift)
                     }
                 }
             }
-            return result
+            return (forward, reverse)
         }
     }
 }

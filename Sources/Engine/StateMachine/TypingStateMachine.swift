@@ -2,7 +2,7 @@ public enum EngineEffect: Equatable, Sendable {
     case switchLayout                     // A2: сменить раскладку системно
     case playSound(SoundMask)             // A13
     case deleteCharacters(count: Int)     // стирание слова backspace'ами
-    case replayBuffer([KeyStroke], word: String) // strokes — keycode-реплей после подтверждённой смены раскладки; word — fallback для unicode-постинга
+    case replayText(word: String, layoutID: String) // посимвольный keycode-реплей результата в целевой раскладке
     case resetBuffers
     case toggleAutocorrection             // по hotkeyToggleAutocorrection
     case none
@@ -45,7 +45,7 @@ public struct TypingStateMachine: Sendable {
             return tryAutoconvert(currentLayoutIsRussian: currentLayoutIsRussian)
         }
         // фантомные/сервисные keycode'ы (AltGr и пр.) не печатают символов —
-        // в буфер не попадают, иначе съедут deleteCharacters/replayBuffer.
+        // в буфер не попадают, иначе съедут deleteCharacters/replayText.
         guard engine.isCharacterKey(key.keycode) else { return [.none] }
         rawBuffer.append(key)
         undoBuffer.append(key)
@@ -66,18 +66,19 @@ public struct TypingStateMachine: Sendable {
 
     public mutating func handleUndoHotkey() -> [EngineEffect] {
         guard undoBuffer.count > 0 else { return [.none] }
-        let strokes = undoBuffer.strokes
         // word = исходный набранный текст: strokes читаются через таблицу раскладки,
-        // в которой слово было набрано (layoutID ставят заполнители буфера). Пустой
-        // layoutID — legacy-путь авто-конвертации: она всегда EN→RU, читаем через
-        // английскую таблицу (иначе undo — визуальный no-op).
+        // в которой слово было набрано. layoutID ставят ветки конвертации
+        // (tryAutoconvert → englishLayoutID, handleManualConvert → текущая раскладка).
+        // Пустой layoutID — legacy-путь (набор без конвертации): авто-конвертация
+        // всегда EN→RU, читаем через английскую таблицу.
         if undoBuffer.layoutID.isEmpty {
             undoBuffer.layoutID = settings.englishLayoutID
         }
         let word = undoBuffer.stringValue(convertingWith: engine)
+        let layoutID = undoBuffer.layoutID
         undoBuffer.removeAll()
-        return [.switchLayout, .deleteCharacters(count: strokes.count),
-                .replayBuffer(strokes, word: word), .playSound(.undo)]
+        return [.switchLayout, .deleteCharacters(count: word.count),
+                .replayText(word: word, layoutID: layoutID), .playSound(.undo)]
     }
 
     public mutating func toggleAutocorrection() -> [EngineEffect] {
@@ -114,16 +115,21 @@ public struct TypingStateMachine: Sendable {
             return handleUndoHotkey()
         }
         defer { rawBuffer.removeAll() }
+        // Исходный текст = буфер, прочитанный через таблицу ТЕКУЩЕЙ раскладки
+        // (то, что видел пользователь). Целевое слово — конвертация этого текста.
+        rawBuffer.layoutID = currentLayoutIsRussian ? settings.russianLayoutID : settings.englishLayoutID
+        let typed = rawBuffer.stringValue(convertingWith: engine)
+        let mode: ConversionMode = currentLayoutIsRussian ? .toEnglish : .toRussian
+        let converted = engine.convert(typed, mode: mode)
         let strokes = rawBuffer.strokes
-        // Исходный текст читался в ТЕКУЩЕЙ раскладке; целевое слово — интерпретация
-        // тех же keycode'ов через таблицу противоположной раскладки.
-        rawBuffer.layoutID = currentLayoutIsRussian ? settings.englishLayoutID : settings.russianLayoutID
-        let word = rawBuffer.stringValue(convertingWith: engine)
         undoBuffer.removeAll()
         for s in strokes { undoBuffer.append(s) }
+        // undo хранит исходные штрихи с раскладкой, в которой слово набрано
         undoBuffer.layoutID = currentLayoutIsRussian ? settings.russianLayoutID : settings.englishLayoutID
-        return [.switchLayout, .deleteCharacters(count: strokes.count),
-                .replayBuffer(strokes, word: word), .playSound(.autoConvert), .resetBuffers]
+        let targetLayoutID = currentLayoutIsRussian ? settings.englishLayoutID : settings.russianLayoutID
+        return [.switchLayout, .deleteCharacters(count: typed.count),
+                .replayText(word: converted, layoutID: targetLayoutID),
+                .playSound(.autoConvert), .resetBuffers]
     }
 
     private mutating func tryAutoconvert(currentLayoutIsRussian: Bool) -> [EngineEffect] {
@@ -143,23 +149,25 @@ public struct TypingStateMachine: Sendable {
             undoBuffer.removeAll()
             return [.resetBuffers]
         }
-        // A3: буфер виртуально «переключается» в целевую раскладку перед проверкой.
-        // MVP проверяет только направление «набирали EN, имели в виду RU»
-        // (checker вызывается с isEnglishLayout: true), поэтому интерпретируем
-        // keycode'ы через русскую таблицу.
-        rawBuffer.layoutID = settings.russianLayoutID
-        let word = rawBuffer.stringValue(convertingWith: engine)
-        let verdict = checker.check(word, isEnglishLayout: true)
+        // A3: буфер читаем через таблицу ТЕКУЩЕЙ (EN) раскладки — typed = то, что
+        // видел пользователь. Проверка по словарю идёт по ядру этого текста
+        // (LayoutChecker обрезает не-буквы), конвертация — того же текста
+        // посимвольно (пунктуация конвертируется тождественно).
+        rawBuffer.layoutID = settings.englishLayoutID
+        let typed = rawBuffer.stringValue(convertingWith: engine)
+        let verdict = checker.check(typed, isEnglishLayout: true)
         switch verdict {
         case .incorrectLayout:
+            let converted = engine.convert(typed, mode: .toRussian)
             let strokes = rawBuffer.strokes
             // I1: undo хранит только последнее сконвертированное слово
             undoBuffer.removeAll()
             for s in strokes { undoBuffer.append(s) }
             // strokes набраны в EN-раскладке — undo читает их через английскую таблицу
             undoBuffer.layoutID = settings.englishLayoutID
-            return [.switchLayout, .deleteCharacters(count: strokes.count),
-                    .replayBuffer(strokes, word: word), .playSound(.autoConvert), .resetBuffers]
+            return [.switchLayout, .deleteCharacters(count: typed.count),
+                    .replayText(word: converted, layoutID: settings.russianLayoutID),
+                    .playSound(.autoConvert), .resetBuffers]
         case .unknown, .exception:
             undoBuffer.removeAll()
             return [.resetBuffers]

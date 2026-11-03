@@ -61,4 +61,58 @@ struct ConversionEngineTests {
         // ё — кириллица, но латиницы больше → .toRussian
         #expect(e.conversionMode(for: "ёghbdtn") == .toRussian)
     }
+
+    // Реальные ANSI-позиции: «ghbdtn»↔«привет» (0x05/0x04/0x0B/0x02/0x10/0x2D),
+    // «vbh»↔«мир» (0x09/0x0B/0x04), пунктуация: 0x2B ',', 0x2F '.', 0x2C '/' (EN) / '.' (RU).
+    let enTable: [UInt16: Character] = [
+        0x05: "g", 0x04: "h", 0x0B: "b", 0x02: "d", 0x10: "t", 0x2D: "n",
+        0x09: "v", 0x2B: ",", 0x2F: ".", 0x2C: "/", 0x31: " ",
+    ]
+    let ruTable: [UInt16: Character] = [
+        0x05: "п", 0x04: "р", 0x0B: "и", 0x02: "в", 0x10: "е", 0x2D: "т",
+        0x09: "м", 0x2B: "б", 0x2F: "ю", 0x2C: ".", 0x31: " ",
+    ]
+
+    func makeRealPairsEngine() -> ConversionEngine {
+        ConversionEngine(
+            russianToEnglish: CharacterPairMap(pairs: ConversionEngine.buildPairs(from: ruTable, to: enTable)),
+            englishToRussian: CharacterPairMap(pairs: ConversionEngine.buildPairs(from: enTable, to: ruTable)),
+            keycodeToCharRU: ruTable,
+            keycodeToCharEN: enTable
+        )
+    }
+
+    @Test func punctuationIdentityBeatsKeycodePair() {
+        // Пара по позиции 0x2B дала б бы ','→'б'; оверлей требует ','→','.
+        // Обратное направление — буквенная пара: 'б'→',' (как в Punto).
+        let e = makeRealPairsEngine()
+        #expect(e.convert(",", mode: .toRussian) == ",")
+        #expect(e.convert("б", mode: .toEnglish) == ",")
+        #expect(e.convert(".", mode: .toRussian) == ".")
+        #expect(e.convert("ю", mode: .toEnglish) == ".")
+    }
+
+    @Test func convertsEnglishWordWithTrailingPunctuation() {
+        let e = makeRealPairsEngine()
+        // Буфер «ghbdtn.»: буквы по парам, '.' — тождественно.
+        #expect(e.convert("ghbdtn.", mode: .toRussian) == "привет.")
+        #expect(e.convert("ghbdtn, vbh!", mode: .toRussian) == "привет, мир!")
+    }
+
+    @Test func convertsRussianTextWithPunctuationAndSpaces() {
+        let e = makeRealPairsEngine()
+        // Пробел и знаки конвертируются тождественно — явная identity для пробела
+        // обязательна: иначе пара по позиции 0x31 (' '↔' ') внешне ок, но менее надёжна.
+        #expect(e.convert("привет, мир!", mode: .toEnglish) == "ghbdtn, vbh!")
+    }
+
+    @Test func punctuationIdentitySetContents() {
+        #expect(ConversionEngine.punctuationIdentity.contains("."))
+        #expect(ConversionEngine.punctuationIdentity.contains(","))
+        #expect(ConversionEngine.punctuationIdentity.contains(" "))
+        #expect(ConversionEngine.punctuationIdentity.contains("«"))
+        #expect(ConversionEngine.punctuationIdentity.contains("—"))
+        #expect(!ConversionEngine.punctuationIdentity.contains("б"))
+        #expect(!ConversionEngine.punctuationIdentity.contains("a"))
+    }
 }

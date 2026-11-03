@@ -2,46 +2,37 @@ import Testing
 @testable import Engine
 
 struct WordBoundaryDetectorTests {
-    @Test func spaceTabEnterAreSeparatorsInEnglishLayout() {
+    @Test func spaceTabEnterAreSeparators() {
         let d = WordBoundaryDetector(noAutoconvertAfterTabOrEnter: false)
-        #expect(d.isWordSeparator(0x31, englishLayout: true)) // space
-        #expect(d.isWordSeparator(0x24, englishLayout: true)) // enter
-        #expect(d.isWordSeparator(0x30, englishLayout: true)) // tab
+        #expect(d.isWordSeparator(0x31)) // space
+        #expect(d.isWordSeparator(0x24)) // enter
+        #expect(d.isWordSeparator(0x30)) // tab
     }
 
-    @Test func backspaceAndEscapeAreNotSeparatorsInEnglishLayout() {
+    @Test func punctuationKeysAreNotSeparators() {
+        // Как в Punto: клавиши пунктуации слово не рвут. В RU-раскладке они
+        // печатают буквы (0x27 э, 0x2B б, 0x2F ю, 0x29 ж, 0x1B ё-ряд), в EN —
+        // знаки, которые копятся в буфере и конвертируются тождественно.
         let d = WordBoundaryDetector(noAutoconvertAfterTabOrEnter: false)
-        #expect(!d.isWordSeparator(0x33, englishLayout: true)) // backspace
-        #expect(!d.isWordSeparator(0x35, englishLayout: true)) // escape
-        #expect(!d.isWordSeparator(0x0C, englishLayout: true)) // letter
+        #expect(!d.isWordSeparator(0x2B)) // comma
+        #expect(!d.isWordSeparator(0x2F)) // period
+        #expect(!d.isWordSeparator(0x2C)) // slash
+        #expect(!d.isWordSeparator(0x29)) // semicolon (RU «ж»)
+        #expect(!d.isWordSeparator(0x27)) // quote (RU «э»)
+        #expect(!d.isWordSeparator(0x1B)) // hyphen section
+    }
+
+    @Test func backspaceAndEscapeAreNotSeparators() {
+        let d = WordBoundaryDetector(noAutoconvertAfterTabOrEnter: false)
+        #expect(!d.isWordSeparator(0x33)) // backspace
+        #expect(!d.isWordSeparator(0x35)) // escape
+        #expect(!d.isWordSeparator(0x0C)) // letter
     }
 
     @Test func tabEnterExcludedWhenNoAutoconvertFlag() {
         let d = WordBoundaryDetector(noAutoconvertAfterTabOrEnter: true)
-        #expect(!d.isWordSeparator(0x30, englishLayout: true))
-        #expect(!d.isWordSeparator(0x24, englishLayout: true))
-        #expect(d.isWordSeparator(0x31, englishLayout: true))
-    }
-
-    @Test func spaceTabEnterAreSeparatorsInRussianLayout() {
-        let d = WordBoundaryDetector(noAutoconvertAfterTabOrEnter: false)
-        #expect(d.isWordSeparator(0x31, englishLayout: false)) // space
-        #expect(d.isWordSeparator(0x24, englishLayout: false)) // enter
-        #expect(d.isWordSeparator(0x30, englishLayout: false)) // tab
-    }
-
-    @Test func letterKeysAreNotSeparatorsInRussianLayout() {
-        // В RU-раскладке эти клавиши печатают буквы и не должны разрывать слова:
-        // 0x27 э, 0x2B б, 0x2F ю, 0x2C ., 0x29 ж, 0x1B ё-ряд
-        let d = WordBoundaryDetector(noAutoconvertAfterTabOrEnter: false)
-        #expect(!d.isWordSeparator(0x27, englishLayout: false))
-        #expect(!d.isWordSeparator(0x2B, englishLayout: false))
-        #expect(!d.isWordSeparator(0x2F, englishLayout: false))
-        #expect(!d.isWordSeparator(0x2C, englishLayout: false))
-        #expect(!d.isWordSeparator(0x29, englishLayout: false))
-        #expect(!d.isWordSeparator(0x1B, englishLayout: false))
-        #expect(!d.isWordSeparator(0x33, englishLayout: false)) // backspace
-        #expect(!d.isWordSeparator(0x35, englishLayout: false)) // escape
-        #expect(!d.isWordSeparator(0x0C, englishLayout: false)) // letter
+        #expect(!d.isWordSeparator(0x30))
+        #expect(!d.isWordSeparator(0x24))
+        #expect(d.isWordSeparator(0x31))
     }
 }

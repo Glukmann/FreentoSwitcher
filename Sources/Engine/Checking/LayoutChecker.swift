@@ -16,18 +16,32 @@ public struct LayoutChecker: Sendable {
     }
 
     public func check(_ word: String, isEnglishLayout: Bool) -> LayoutVerdict {
-        let w = word.lowercased()
+        // Проверка идёт по ЯДРУ слова: обрезке не-букв с двух концов. В буфере
+        // теперь бывает пунктуация («ghbdtn.»), и она не должна мешать поиску
+        // триггера. Слово целиком (с пунктуацией) остаётся для конвертации —
+        // вердикта достаточно.
+        let core = Self.letterCore(of: word).lowercased()
+        guard !core.isEmpty else { return .unknown }
         // 1. user exceptions (block conversion)
         for rule in userRules where !rule.shouldSwitch {
-            if matches(rule, word: w) { return .exception }
+            if matches(rule, word: core) { return .exception }
         }
         // 2. user force-switch dictionary
         for rule in userRules where rule.shouldSwitch {
-            if matches(rule, word: w) { return .incorrectLayout }
+            if matches(rule, word: core) { return .incorrectLayout }
         }
         // 3. trigger words
-        if triggers.contains(w) { return .incorrectLayout }
+        if triggers.contains(core) { return .incorrectLayout }
         return .unknown
+    }
+
+    /// Обрезает не-буквы с двух концов. trimmingCharacters не подходит:
+    /// нужны именно буквы (Character.isLetter), а не CharacterSet'ы.
+    static func letterCore(of word: String) -> String {
+        var chars = Array(word)
+        while let first = chars.first, !first.isLetter { chars.removeFirst() }
+        while let last = chars.last, !last.isLetter { chars.removeLast() }
+        return String(chars)
     }
 
     private func matches(_ rule: UserRule, word: String) -> Bool {

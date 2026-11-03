@@ -16,6 +16,19 @@ public struct CharacterPairMap: Equatable, Sendable {
 }
 
 public struct ConversionEngine: Sendable {
+    /// Знаки пунктуации конвертируются ТОЖДЕСТВЕННО: '.' → '.', ',' → ',' и т.д.
+    /// Меняются только БУКВЫ (по клавиатурным парам). Без этого оверлея пары
+    /// «по позиции клавиши» ломали бы знаки: 0x2B EN=',' ↔ RU='б' — это буква,
+    /// не пара. Пробел включён явно: пара по позиции 0x31 дала бы ' '↔' ' и так,
+    /// но явная identity надёжнее. Буквы (в т.ч. кириллица) в набор НЕ входят —
+    /// их пары строятся только по keycode-таблицам.
+    public static let punctuationIdentity: Set<Character> = [
+        ".", ",", ";", ":", "!", "?", "'", "\"", "(", ")",
+        "-", "–", "—", "_", "/", "\\", "@", "#", "$", "%",
+        "^", "&", "*", "+", "=", "<", ">", "`", "~", "[",
+        "]", "{", "}", "|", "«", "»", "„", "“", "”", " ",
+    ]
+
     private let russianToEnglish: CharacterPairMap
     private let englishToRussian: CharacterPairMap
     private let keycodeToCharRU: [UInt16: Character]
@@ -34,6 +47,20 @@ public struct ConversionEngine: Sendable {
     public func convert(_ string: String, mode: ConversionMode) -> String {
         let map = mode == .toEnglish ? russianToEnglish : englishToRussian
         return String(string.map { map.convert($0) })
+    }
+
+    /// Пары «источник → приёмник» по позициям клавиш (один keycode в двух
+    /// раскладках), плюс тождественные пары для пунктуации: оверлей накладывается
+    /// ПОСЛЕ keycode-пар и побеждает их (0x2B: ','→'б' затирается в ','→',').
+    /// Живёт в Engine (а не в App), чтобы тестировать оверлей без App-таргета.
+    public static func buildPairs(from: [UInt16: Character], to: [UInt16: Character])
+        -> [Character: Character] {
+        var pairs: [Character: Character] = [:]
+        for (kc, dst) in to {
+            if let src = from[kc], src != dst { pairs[src] = dst }
+        }
+        for p in punctuationIdentity { pairs[p] = p }
+        return pairs
     }
 
     /// Направление конвертации для готового ТЕКСТА (выделения): по преобладающему

@@ -12,13 +12,14 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
     /// Храним engine (а не теряем после init): нужен для конвертации выделения —
     /// там текст уже готовый, и направление определяем по преобладающему алфавиту.
     private let engine: ConversionEngine
+    /// Обратные таблицы «символ → keycode» целевых раскладок: посимвольный
+    /// keycode-реплей результата конвертации (эффект .replayText).
+    private let charToKeyRU: [Character: InputSourceManager.CharKeyMapping]
+    private let charToKeyEN: [Character: InputSourceManager.CharKeyMapping]
     private let boundaries: WordBoundaryDetector
     private let statusBar = StatusBarController()
     /// Трекер «одиночного Option» (quick-switch): срабатывание по отпусканию.
     private var aloneTracker = ModifierAloneTracker()
-    /// Флаг подтверждённой смены раскладки: ставится веткой .switchLayout
-    /// (результат switchLanguageAndWait), сбрасывается после .replayBuffer.
-    private var confirmedSwitch = false
 
     /// Keycodes чистых модификаторов: Shift 0x38/0x3C, Caps 0x39, Cmd 0x37/0x36,
     /// Option 0x3A/0x3D, Ctrl 0x3B/0x3E — их keyDown'ы в буфер не идут.
@@ -47,15 +48,26 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
         let maps = InputSourceManager.shared.makeKeycodeMaps(
             russianLayoutID: settings.russianLayoutID,
             englishLayoutID: settings.englishLayoutID)
+        charToKeyRU = maps.charToKeyRU
+        charToKeyEN = maps.charToKeyEN
         engine = ConversionEngine(
-            russianToEnglish: CharacterPairMap(pairs: Self.buildPairs(maps.keycodeToCharRU, maps.keycodeToCharEN)),
-            englishToRussian: CharacterPairMap(pairs: Self.buildPairs(maps.keycodeToCharEN, maps.keycodeToCharRU)),
+            russianToEnglish: CharacterPairMap(pairs: ConversionEngine.buildPairs(
+                from: maps.keycodeToCharRU, to: maps.keycodeToCharEN)),
+            englishToRussian: CharacterPairMap(pairs: ConversionEngine.buildPairs(
+                from: maps.keycodeToCharEN, to: maps.keycodeToCharRU)),
             keycodeToCharRU: maps.keycodeToCharRU,
             keycodeToCharEN: maps.keycodeToCharEN)
+        // Триггеры храним в «как напечатано» форме: check() вызывается с текстом,
+        // прочитанным через таблицу ТЕКУЩЕЙ раскладки (typed), поэтому
+        // кириллические сиды переводим в их EN-отображение («привет» → «ghbdtn»).
+        var seedTriggers: [String] = []
+        for t in Self.loadSeedTriggers() {
+            seedTriggers.append(engine.convert(t, mode: .toEnglish))
+        }
         stateMachine = TypingStateMachine(
             settings: settings,
             engine: engine,
-            checker: LayoutChecker(triggers: Self.loadSeedTriggers(), userRules: settings.userRules))
+            checker: LayoutChecker(triggers: seedTriggers, userRules: settings.userRules))
         boundaries = WordBoundaryDetector(noAutoconvertAfterTabOrEnter: settings.noAutoconvertAfterTabOrEnter)
         sounds = SoundPlayer(settings: settings)
         super.init()
@@ -155,8 +167,7 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
         // C2: с зажатыми Cmd/Option/Ctrl не буферизуем (Cmd+C/V не портят буфер;
         // Shift 0x20000 вне маски — заглавные буферизуются и реплеятся с флагами)
         if (key.modifiers & 0x1C0000) != 0 { return true }
-        let isSep = boundaries.isWordSeparator(
-            key.keycode, englishLayout: !inputSources.isCurrentRussian())
+        let isSep = boundaries.isWordSeparator(key.keycode)
         if isSep {
             DebugLogger.log(
                 "sep: layout=\(inputSources.currentLayoutID())"
@@ -277,40 +288,39 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
         for e in effects {
             switch e {
             case .switchLayout:
-                confirmedSwitch = inputSources.switchLanguageAndWait(
+                let confirmed = inputSources.switchLanguageAndWait(
                     russianLayoutID: settings.russianLayoutID,
                     englishLayoutID: settings.englishLayoutID)
-                DebugLogger.log("switchLayout confirmed=\(confirmedSwitch)")
+                DebugLogger.log("switchLayout confirmed=\(confirmed)")
+                if !confirmed {
+                    // Реплей всё равно идёт: первая буква может встать в старой
+                    // раскладке (редкость) — раньше тут был unicode-fallback.
+                    DebugLogger.log("switchLayout: unconfirmed after timeout, replaying anyway")
+                }
             case .playSound(let mask):
                 sounds.play(mask, switchingToRussian: inputSources.isCurrentRussian())
             case .deleteCharacters(let count):
                 for _ in 0..<count { EventSynth.pressKey(0x33) }
-            case .replayBuffer(let strokes, let word):
-                // Keycode-реплей после подтверждённой смены раскладки:
-                // unicode-постинг (postText) Заметки/Терминал игнорируют.
-                if confirmedSwitch {
-                    for s in strokes {
-                        EventSynth.pressKey(s.keycode, flags: CGEventFlags(rawValue: s.modifiers & 0x1C0000))
+            case .replayText(let word, let layoutID):
+                // Посимвольный keycode-реплей в ЦЕЛЕВОЙ раскладке: для каждого
+                // символа ищем keycode в обратной таблице (со Shift, если нужен).
+                // Раскладка к моменту реплея уже целевая (ветка .switchLayout
+                // ждала подтверждения) — в т.ч. для пунктуации ('.' печатается
+                // keycode'ом 0x2C в RU, а не реинтерпретацией EN-keycode).
+                let table = InputSourceManager.isRussianLayoutID(layoutID) ? charToKeyRU : charToKeyEN
+                for c in word {
+                    guard let mapping = table[c] else {
+                        DebugLogger.log("replay: no keycode for \(c) in \(layoutID), skipped")
+                        continue
                     }
-                } else {
-                    // Fallback: unicode-постинг (некоторые приложения его не принимают,
-                    // но лучше, чем ничего).
-                    EventSynth.postText(word)
+                    EventSynth.pressKey(mapping.keycode,
+                                        flags: mapping.needsShift ? [.maskShift] : [])
                 }
-                confirmedSwitch = false
             case .resetBuffers: break
             case .toggleAutocorrection: break
             case .none: break
             }
         }
-    }
-
-    private static func buildPairs(_ from: [UInt16: Character], _ to: [UInt16: Character]) -> [Character: Character] {
-        var pairs: [Character: Character] = [:]
-        for (kc, dst) in to {
-            if let src = from[kc], src != dst { pairs[src] = dst }
-        }
-        return pairs
     }
 
     private static func loadSeedTriggers() -> [String] {
