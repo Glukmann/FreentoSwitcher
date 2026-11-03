@@ -271,7 +271,7 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
             Clipboard.restore(sel.snapshot)
             return
         }
-        let converted = engine.convert(sel.copied, mode: mode)
+        let converted = engine.convertPreservingCase(sel.copied, mode: mode)
         // Буквы не маппятся RU↔EN — вставки ещё не было, буфер возвращаем сразу (sleep не нужен).
         guard converted != sel.copied else {
             DebugLogger.log("selection: nothing to convert, skip")
@@ -312,7 +312,7 @@ final class AppController: NSObject, @MainActor EventTapDelegate {
             DebugLogger.log("selection: no letters, skip")
             return
         }
-        let converted = engine.convert(selected, mode: mode)
+        let converted = engine.convertPreservingCase(selected, mode: mode)
         guard converted != selected else {
             DebugLogger.log("selection: nothing to convert, skip")
             return
