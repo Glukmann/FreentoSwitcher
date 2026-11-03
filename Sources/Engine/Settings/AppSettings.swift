@@ -86,7 +86,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         russianLayoutID: "com.apple.keylayout.Russian",
         englishLayoutID: "com.apple.keylayout.ABC",
         hotkeySwitchLayout: Hotkey(keycode: 50, modifiers: 0x100000), // Cmd+`
-        hotkeyUndo: Hotkey(keycode: 50, modifiers: 0x80000),          // Option+`
+        hotkeyUndo: .none, // отдельной клавиши отмены нет (UC-2 п.5): вся работа одной клавишей
         hotkeyToggleAutocorrection: Hotkey.none,
         sounds: [.switchToRussian, .switchToEnglish, .autoConvert, .undo],
         isSoundOn: true,

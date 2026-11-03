@@ -17,6 +17,7 @@ final class AppSettingsTests {
         #expect(d.isSoundOn == true)
         #expect(d.sounds.contains(.autoConvert))
         #expect(d.hotkeySwitchLayout == Hotkey(keycode: 50, modifiers: 0x100000)) // Cmd+`
+        #expect(d.hotkeyUndo == .none) // отдельной клавиши отмены нет (UC-2 п.5)
         #expect(d.debugLogging == false)
     }
 

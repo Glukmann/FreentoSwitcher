@@ -13,7 +13,10 @@ public enum EngineEffect: Equatable, Sendable {
 /// Не знает про CGEvent/TIS — весь I/O на стороне App.
 public struct TypingStateMachine: Sendable {
     public private(set) var rawBuffer = KeyStrokeBuffer()
-    private var undoBuffer = KeyStrokeBuffer()
+    /// Пара переключения (UC-3): текущий текст в документе и тот, что вернёт
+    /// следующее нажатие. Swap, не clear — цикл «туда-обратно» бесконечен.
+    private var toggleCurrent: (text: String, layoutID: String)?
+    private var toggleOther: (text: String, layoutID: String)?
     private var settings: AppSettings
     private let engine: ConversionEngine
     private let checker: LayoutChecker
@@ -37,7 +40,6 @@ public struct TypingStateMachine: Sendable {
         if key.keycode == 0x35 { return reset() }                    // Escape
         if key.keycode == 0x33 {                                     // Backspace
             rawBuffer.removeLast()
-            undoBuffer.removeLast()
             return [.none]
         }
         guard autocorrectionIsActive else { return [.none] }
@@ -48,7 +50,6 @@ public struct TypingStateMachine: Sendable {
         // в буфер не попадают, иначе съедут deleteCharacters/replayText.
         guard engine.isCharacterKey(key.keycode) else { return [.none] }
         rawBuffer.append(key)
-        undoBuffer.append(key)
         return [.none]
     }
 
@@ -64,21 +65,16 @@ public struct TypingStateMachine: Sendable {
         return [.none]
     }
 
+    /// Классическая одноразовая отмена: вернуть исходный текст пары и забыть
+    /// её (в отличие от handleManualConvert, который СВОПАЕТ пару и крутит
+    /// цикл дальше). В продукте не вызывается (UC-2 п.5) — публичный API
+    /// для тестов и внешних интеграций.
     public mutating func handleUndoHotkey() -> [EngineEffect] {
-        guard undoBuffer.count > 0 else { return [.none] }
-        // word = исходный набранный текст: strokes читаются через таблицу раскладки,
-        // в которой слово было набрано. layoutID ставят ветки конвертации
-        // (tryAutoconvert → englishLayoutID, handleManualConvert → текущая раскладка).
-        // Пустой layoutID — legacy-путь (набор без конвертации): авто-конвертация
-        // всегда EN→RU, читаем через английскую таблицу.
-        if undoBuffer.layoutID.isEmpty {
-            undoBuffer.layoutID = settings.englishLayoutID
-        }
-        let word = undoBuffer.stringValue(convertingWith: engine)
-        let layoutID = undoBuffer.layoutID
-        undoBuffer.removeAll()
-        return [.switchLayout, .deleteCharacters(count: word.count),
-                .replayText(word: word, layoutID: layoutID), .playSound(.undo)]
+        guard let current = toggleCurrent, let other = toggleOther else { return [.none] }
+        toggleCurrent = nil
+        toggleOther = nil
+        return [.switchLayout, .deleteCharacters(count: current.text.count),
+                .replayText(word: other.text, layoutID: other.layoutID), .playSound(.undo)]
     }
 
     public mutating func toggleAutocorrection() -> [EngineEffect] {
@@ -93,16 +89,17 @@ public struct TypingStateMachine: Sendable {
     /// Сброс буферов набора без эффектов. Нужен, когда selection-путь отработал
     /// при непустом rawBuffer: корреспонденция «keystrokes ↔ текст в поле»
     /// разорвана (мышь/вставка), хранить штрихи дальше небезопасно — на
-    /// сепараторе deleteCharacters перестёр бы чужой текст.
+    /// сепараторе deleteCharacters перестёр бы чужой текст. Пара переключения
+    /// тоже сбрасывается (I4).
     public mutating func discardTypingBuffers() {
         rawBuffer.removeAll()
-        undoBuffer.removeAll()
+        toggleCurrent = nil
+        toggleOther = nil
     }
 
     /// A2-manual: принудительная конвертация последнего слова (ручная, как в Punto):
     /// без словаря, всегда переводит, меняет раскладку и перепечатывает слово.
-    /// Каноничное поведение Punto: повторное нажатие сразу после конвертации
-    /// (rawBuffer уже пуст) откатывает её через undoBuffer.
+    /// Буфер пуст + пара есть → swap пары (UC-3): бесконечное туда-обратно.
     public mutating func handleManualConvert(currentLayoutIsRussian: Bool,
                                              selectionExists: Bool = false) -> [EngineEffect] {
         if rawBuffer.count == 0 {
@@ -111,22 +108,27 @@ public struct TypingStateMachine: Sendable {
             // перед ним — деструктивный откат. App с selectionExists: true уйдёт в
             // конвертацию выделения и сюда больше не вернётся.
             if selectionExists { return [.none] }  // App уйдёт в конвертацию выделения
-            guard undoBuffer.count > 0 else { return [.none] }
-            return handleUndoHotkey()
+            guard let current = toggleCurrent, let other = toggleOther else { return [.none] }
+            toggleCurrent = other
+            toggleOther = current
+            return [.switchLayout, .deleteCharacters(count: current.text.count),
+                    .replayText(word: other.text, layoutID: other.layoutID), .playSound(.undo)]
         }
         defer { rawBuffer.removeAll() }
+        // I10: слово длиннее буфера не конвертируем — typed-строка неполная,
+        // deleteCharacters по ней стёр бы больше, чем вставим (нарушение I2).
+        guard !rawBuffer.overflowed else { return [.none] }
         // Исходный текст = буфер, прочитанный через таблицу ТЕКУЩЕЙ раскладки
         // (то, что видел пользователь). Целевое слово — конвертация этого текста.
         rawBuffer.layoutID = currentLayoutIsRussian ? settings.russianLayoutID : settings.englishLayoutID
         let typed = rawBuffer.stringValue(convertingWith: engine)
         let mode: ConversionMode = currentLayoutIsRussian ? .toEnglish : .toRussian
         let converted = engine.convert(typed, mode: mode)
-        let strokes = rawBuffer.strokes
-        undoBuffer.removeAll()
-        for s in strokes { undoBuffer.append(s) }
-        // undo хранит исходные штрихи с раскладкой, в которой слово набрано
-        undoBuffer.layoutID = currentLayoutIsRussian ? settings.russianLayoutID : settings.englishLayoutID
+        let sourceLayoutID = currentLayoutIsRussian ? settings.russianLayoutID : settings.englishLayoutID
         let targetLayoutID = currentLayoutIsRussian ? settings.englishLayoutID : settings.russianLayoutID
+        // UC-3: пара переключения := (текущий: converted + целевая; другой: typed + исходная)
+        toggleCurrent = (converted, targetLayoutID)
+        toggleOther = (typed, sourceLayoutID)
         return [.switchLayout, .deleteCharacters(count: typed.count),
                 .replayText(word: converted, layoutID: targetLayoutID),
                 .playSound(.autoConvert), .resetBuffers]
@@ -135,18 +137,22 @@ public struct TypingStateMachine: Sendable {
     private mutating func tryAutoconvert(currentLayoutIsRussian: Bool) -> [EngineEffect] {
         defer { rawBuffer.removeAll() }
         guard rawBuffer.count > 0 else { return [.none] }
+        // I10 (UC-1b): переполненный буфер → не конвертируем, буферы сброшены.
+        guard !rawBuffer.overflowed else { return reset() }
         // Флаг отмены потребляем сепаратором в любом состоянии: если он переживёт
         // период выключенной авто-конвертации, следующее слово молча не сконвертируется.
         if cancelNextWord {
             cancelNextWord = false
-            undoBuffer.removeAll()
+            toggleCurrent = nil
+            toggleOther = nil
             return [.resetBuffers]
         }
-        guard autoConvertEnabled else { undoBuffer.removeAll(); return [.resetBuffers] }
+        guard autoConvertEnabled else { toggleCurrent = nil; toggleOther = nil; return [.resetBuffers] }
         // C1: русское слово в русской раскладке корректно — не конвертируем
-        // и не кладём в undoBuffer (откатывать нечего).
+        // и не кладём пару (переключать нечего).
         if currentLayoutIsRussian {
-            undoBuffer.removeAll()
+            toggleCurrent = nil
+            toggleOther = nil
             return [.resetBuffers]
         }
         // A3: буфер читаем через таблицу ТЕКУЩЕЙ (EN) раскладки — typed = то, что
@@ -159,24 +165,23 @@ public struct TypingStateMachine: Sendable {
         switch verdict {
         case .incorrectLayout:
             let converted = engine.convert(typed, mode: .toRussian)
-            let strokes = rawBuffer.strokes
-            // I1: undo хранит только последнее сконвертированное слово
-            undoBuffer.removeAll()
-            for s in strokes { undoBuffer.append(s) }
-            // strokes набраны в EN-раскладке — undo читает их через английскую таблицу
-            undoBuffer.layoutID = settings.englishLayoutID
+            // UC-3: пара переключения := (текущий: converted + RU; другой: typed + EN)
+            toggleCurrent = (converted, settings.russianLayoutID)
+            toggleOther = (typed, settings.englishLayoutID)
             return [.switchLayout, .deleteCharacters(count: typed.count),
                     .replayText(word: converted, layoutID: settings.russianLayoutID),
                     .playSound(.autoConvert), .resetBuffers]
         case .unknown, .exception:
-            undoBuffer.removeAll()
+            toggleCurrent = nil
+            toggleOther = nil
             return [.resetBuffers]
         }
     }
 
     private mutating func reset() -> [EngineEffect] {
         rawBuffer.removeAll()
-        undoBuffer.removeAll()
+        toggleCurrent = nil
+        toggleOther = nil
         return [.resetBuffers]
     }
 }

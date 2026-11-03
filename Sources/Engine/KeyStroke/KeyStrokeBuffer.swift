@@ -7,6 +7,10 @@ public struct KeyStrokeBuffer: Equatable, Sendable {
 
     public private(set) var strokes: [KeyStroke] = []
     public var layoutID: String = ""
+    /// Ставится при обрезке сверх maxLength: слово длиннее буфера (I10) —
+    /// TypingStateMachine по этому флагу запрещает конвертацию (typed-строка
+    /// неполная, deleteCharacters по ней нарушил бы I2).
+    public private(set) var overflowed = false
 
     public var count: Int { strokes.count }
 
@@ -24,14 +28,15 @@ public struct KeyStrokeBuffer: Equatable, Sendable {
         strokes.append(stroke)
         if strokes.count > Self.maxLength {
             strokes.removeFirst(strokes.count - Self.maxLength)
+            overflowed = true
         }
     }
 
     public mutating func removeLast() {
         if !strokes.isEmpty { strokes.removeLast() }
-        // Опустошение стиранием — тот же сброс layoutID, что в removeAll():
+        // Опустошение стиранием — тот же сброс layoutID/overflowed, что в removeAll():
         // иначе протухший layoutID прошлого слова испортит undo нового набора.
-        if strokes.isEmpty { layoutID = "" }
+        if strokes.isEmpty { layoutID = ""; overflowed = false }
     }
 
     public mutating func removeAll() {
@@ -39,6 +44,7 @@ public struct KeyStrokeBuffer: Equatable, Sendable {
         // layoutID — свойство набора штрихов, а не буфера: после очистки
         // протухший layoutID ломал бы undo (штрихи читались бы через старую таблицу).
         layoutID = ""
+        overflowed = false
     }
 
     public func stringValue(convertingWith engine: ConversionEngine) -> String {

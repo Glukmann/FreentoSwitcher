@@ -15,6 +15,22 @@ struct KeyStrokeBufferTests {
         #expect(b.count == 32)
     }
 
+    @Test func overflowFlagSetOnTrimAndClearedOnReset() {
+        var b = KeyStrokeBuffer()
+        for i in 0..<32 { b.append(KeyStroke(keycode: UInt16(i), modifiers: 0)) }
+        #expect(!b.overflowed) // ровно maxLength — ещё не переполнение
+        b.append(KeyStroke(keycode: 200, modifiers: 0)) // 33-й штрих → обрезка
+        #expect(b.count == 32)
+        #expect(b.overflowed)
+        b.removeAll()
+        #expect(!b.overflowed)
+        // то же при стирании до пустого removeLast
+        for i in 0..<33 { b.append(KeyStroke(keycode: UInt16(i % 50), modifiers: 0)) }
+        #expect(b.overflowed)
+        for _ in 0..<32 { b.removeLast() }
+        #expect(!b.overflowed)
+    }
+
     @Test func removeLastAndRemoveAll() {
         var b = KeyStrokeBuffer()
         b.append(KeyStroke(keycode: 1, modifiers: 0))
